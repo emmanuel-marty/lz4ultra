@@ -18,3 +18,5 @@ The peephole optimizer is located in src/shrink.c, as lz4ultra_optimize_command_
 lz4ultra is an offshoot of the [lzsa](https://github.com/emmanuel-marty/lzsa) compressor as we thought it would be interesting to the wider compression community, to users of LZ4 that compress data once and require the fastest decompression time without a trade-off in compression ratio, and also to retrocomputing developers as this will speed decompression up further on 8/16-bit systems.
 
 The tool currently outputs 64Kb blocks with inter-block dependencies and no frame checksums. It could easily be augmented to produce blocks of any size supported by the LZ4 format, and to add the checksums.
+
+lz4ultra is developed by Emmanuel Marty with the help of spke.
