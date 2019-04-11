@@ -464,6 +464,8 @@ static void lz4ultra_optimize_matches(lsza_compressor *pCompressor, const int nS
 
       int nLiteralsLen = nLastLiteralsOffset - i;
       nBestCost = 1 + cost[i + 1] + lz4ultra_get_literals_varlen_size(nLiteralsLen);
+      if (nLiteralsLen > 1)
+         nBestCost -= lz4ultra_get_literals_varlen_size(nLiteralsLen - 1);
       nBestMatchLen = 0;
       nBestMatchOffset = 0;
 
@@ -478,9 +480,13 @@ static void lz4ultra_optimize_matches(lsza_compressor *pCompressor, const int nS
 
             if (nRemainingLiteralsLen < 0) nRemainingLiteralsLen = 0;
 
+            if ((i + nMatchLen) > (nEndOffset - LAST_LITERALS))
+               nMatchLen = nEndOffset - LAST_LITERALS - i;
+
             nCurCost = 1 + lz4ultra_get_literals_varlen_size(nRemainingLiteralsLen) + 2 + lz4ultra_get_match_varlen_size(nMatchLen - MIN_MATCH_SIZE);
-            if ((i + nMatchLen) < nEndOffset)
-               nCurCost += cost[i + nMatchLen];
+            nCurCost += cost[i + nMatchLen];
+            if (nRemainingLiteralsLen > 1)
+               nCurCost -= lz4ultra_get_literals_varlen_size(nRemainingLiteralsLen - 1);
 
             if (nBestCost >= nCurCost) {
                nBestCost = nCurCost;
@@ -490,9 +496,13 @@ static void lz4ultra_optimize_matches(lsza_compressor *pCompressor, const int nS
          }
          else {
             if (pMatch[m].length >= MIN_MATCH_SIZE) {
+               int nMatchLen = pMatch[m].length;
                int k, nMatchRunLen;
 
-               nMatchRunLen = pMatch[m].length;
+               if ((i + nMatchLen) > (nEndOffset - LAST_LITERALS))
+                  nMatchLen = nEndOffset - LAST_LITERALS - i;
+
+               nMatchRunLen = nMatchLen;
                if (nMatchRunLen > MATCH_RUN_LEN)
                   nMatchRunLen = MATCH_RUN_LEN;
 
@@ -503,8 +513,9 @@ static void lz4ultra_optimize_matches(lsza_compressor *pCompressor, const int nS
                   if (nRemainingLiteralsLen < 0) nRemainingLiteralsLen = 0;
 
                   nCurCost = 1 + lz4ultra_get_literals_varlen_size(nRemainingLiteralsLen) + 2 /* no extra match len bytes */;
-                  if ((i + k) < nEndOffset)
-                     nCurCost += cost[i + k];
+                  nCurCost += cost[i + k];
+                  if (nRemainingLiteralsLen > 1)
+                     nCurCost -= lz4ultra_get_literals_varlen_size(nRemainingLiteralsLen - 1);
 
                   if (nBestCost >= nCurCost) {
                      nBestCost = nCurCost;
@@ -513,15 +524,16 @@ static void lz4ultra_optimize_matches(lsza_compressor *pCompressor, const int nS
                   }
                }
 
-               for (; k <= pMatch[m].length; k++) {
+               for (; k <= nMatchLen; k++) {
                   int nCurCost;
                   int nRemainingLiteralsLen = nLastLiteralsOffset - (i + k);
 
                   if (nRemainingLiteralsLen < 0) nRemainingLiteralsLen = 0;
 
                   nCurCost = 1 + lz4ultra_get_literals_varlen_size(nRemainingLiteralsLen) + 2 + lz4ultra_get_match_varlen_size(k - MIN_MATCH_SIZE);
-                  if ((i + k) < nEndOffset)
-                     nCurCost += cost[i + k];
+                  nCurCost += cost[i + k];
+                  if (nRemainingLiteralsLen > 1)
+                     nCurCost -= lz4ultra_get_literals_varlen_size(nRemainingLiteralsLen - 1);
 
                   if (nBestCost >= nCurCost) {
                      nBestCost = nCurCost;
@@ -561,7 +573,7 @@ static void lz4ultra_optimize_command_count(lsza_compressor *pCompressor, const 
          int nMatchLen = pMatch->length;
          int nReduce = 0;
 
-         if (nMatchLen <= 9) {
+         if (nMatchLen <= 19) {
             int nMatchOffset = pMatch->offset;
             int nEncodedMatchLen = nMatchLen - MIN_MATCH_SIZE;
             int nCommandSize = 1 /* token */ + lz4ultra_get_literals_varlen_size(nNumLiterals) + 2 /* match offset */ + lz4ultra_get_match_varlen_size(nEncodedMatchLen);
@@ -601,6 +613,17 @@ static void lz4ultra_optimize_command_count(lsza_compressor *pCompressor, const 
             i += nMatchLen;
          }
          else {
+            if ((i + nMatchLen) < nEndOffset && nMatchLen >= LCP_MAX && pMatch->offset == 1 &&
+               pCompressor->match[(i + nMatchLen) << MATCHES_PER_OFFSET_SHIFT].offset == 1 &&
+               (nMatchLen + pCompressor->match[(i + nMatchLen) << MATCHES_PER_OFFSET_SHIFT].length) <= 65535) {
+               /* Join */
+
+               pMatch->length += pCompressor->match[(i + nMatchLen) << MATCHES_PER_OFFSET_SHIFT].length;
+               pCompressor->match[(i + nMatchLen) << MATCHES_PER_OFFSET_SHIFT].offset = 0;
+               pCompressor->match[(i + nMatchLen) << MATCHES_PER_OFFSET_SHIFT].length = -1;
+               continue;
+            }
+
             nNumLiterals = 0;
             i += nMatchLen;
          }
