@@ -3,9 +3,9 @@ lz4ultra -- Optimal LZ4 packer with faster decompression
 
 lz4ultra is a command-line optimal compression utility that produces compressed files in the [lz4](https://github.com/lz4/lz4) format created by Yann Collet.
 
-The tool creates compressed files that decompress approximately 1% faster than files produced by lz4 in optimal compression mode ("lz4hc"), smalllz4 and blz4, and around 0.5% faster than files produced by lz4x.
+The tool creates optimally compressed files, like lz4 in optimal compression mode ("lz4hc"), smallLZ4, blz4 and lz4x. The files decompress slightly faster.
 
-The compression ratio is identical or nearly identical to lz4 in the highest optimal compression mode. The produced files are meant to be decompressed with the lz4 tool and library. While lz4ultra includes a decompressor, it is mostly meant to verify the output of the compressor and isn't as optimized as Yann Collet's lz4 proper.
+The compression ratio is nearly identical or slightly better than lz4 in the highest optimal compression mode. The produced files are meant to be decompressed with the lz4 tool and library. While lz4ultra includes a decompressor, it is mostly meant to verify the output of the compressor and isn't as optimized as Yann Collet's lz4 proper.
 
 lz4ultra works by performing the usual optimal compression (using a suffix array), and then applying a forward peephole optimization pass, that breaks ties (sequences of compression commands that result in an identical number of bytes added to the compressed data), in favor of outputting less commands.
 
