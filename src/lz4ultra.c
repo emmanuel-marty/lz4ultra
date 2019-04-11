@@ -188,7 +188,7 @@ static int lz4ultra_compress(const char *pszInFilename, const char *pszOutFilena
                }
                else {
                   nOriginalSize += (long long)nInDataSize;
-                  nCompressedSize += 3LL + (long long)nOutDataSize;
+                  nCompressedSize += 4LL + (long long)nOutDataSize;
                }
             }
          }
@@ -217,7 +217,7 @@ static int lz4ultra_compress(const char *pszInFilename, const char *pszOutFilena
                }
                else {
                   nOriginalSize += (long long)nInDataSize;
-                  nCompressedSize += 3LL + (long long)nInDataSize;
+                  nCompressedSize += 4LL + (long long)nInDataSize;
                }
             }
          }
