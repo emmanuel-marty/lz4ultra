@@ -620,8 +620,7 @@ static void lz4ultra_optimize_command_count(lsza_compressor *pCompressor, const 
          }
          else {
             if ((i + nMatchLen) < nEndOffset && nMatchLen >= LCP_MAX && pMatch->offset == 1 &&
-               pCompressor->match[(i + nMatchLen) << MATCHES_PER_OFFSET_SHIFT].offset == 1 &&
-               (nMatchLen + pCompressor->match[(i + nMatchLen) << MATCHES_PER_OFFSET_SHIFT].length) <= 65535) {
+               pCompressor->match[(i + nMatchLen) << MATCHES_PER_OFFSET_SHIFT].offset == 1) {
                /* Join */
 
                pMatch->length += pCompressor->match[(i + nMatchLen) << MATCHES_PER_OFFSET_SHIFT].length;
