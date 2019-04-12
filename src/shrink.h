@@ -31,9 +31,9 @@ typedef struct _lz4ultra_match lz4ultra_match;
 /** Compression context */
 typedef struct {
    divsufsort_ctx_t divsufsort_context;
-   unsigned int *intervals;
-   unsigned int *pos_data;
-   unsigned int *open_intervals;
+   unsigned long long *intervals;
+   unsigned long long *pos_data;
+   unsigned long long *open_intervals;
    lz4ultra_match *match;
    int num_commands;
 } lsza_compressor;

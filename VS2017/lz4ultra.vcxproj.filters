@@ -22,6 +22,9 @@
     <Filter Include="Fichiers sources\libdivsufsort\lib">
       <UniqueIdentifier>{7b58e9ea-8419-4a92-b23b-52a66da2bca3}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Fichiers sources\xxhash">
+      <UniqueIdentifier>{178a6577-0784-4aa4-8a35-9c443a088e23}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h">
@@ -45,6 +48,9 @@
     <ClInclude Include="..\src\shrink.h">
       <Filter>Fichiers sources</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\xxhash\xxhash.h">
+      <Filter>Fichiers sources\xxhash</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\libdivsufsort\lib\divsufsort.c">
@@ -67,6 +73,9 @@
     </ClCompile>
     <ClCompile Include="..\src\lz4ultra.c">
       <Filter>Fichiers sources</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\xxhash\xxhash.c">
+      <Filter>Fichiers sources\xxhash</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

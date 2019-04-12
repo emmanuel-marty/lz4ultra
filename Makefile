@@ -1,5 +1,5 @@
 CC=clang
-CFLAGS=-O3 -fomit-frame-pointer -Isrc/libdivsufsort/include -Isrc -DHAVE_CONFIG_H
+CFLAGS=-O3 -fomit-frame-pointer -Isrc/libdivsufsort/include -Isrc/xxhash -Isrc -DHAVE_CONFIG_H
 OBJDIR=obj
 LDFLAGS=
 STRIP=strip
@@ -17,6 +17,7 @@ OBJS += $(OBJDIR)/src/libdivsufsort/lib/divsufsort.o
 OBJS += $(OBJDIR)/src/libdivsufsort/lib/sssort.o
 OBJS += $(OBJDIR)/src/libdivsufsort/lib/trsort.o
 OBJS += $(OBJDIR)/src/libdivsufsort/lib/utils.o
+OBJS += $(OBJDIR)/src/xxhash/xxhash.o
 
 all: $(APP)
 

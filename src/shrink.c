@@ -35,10 +35,10 @@
 #include "format.h"
 
 #define LCP_BITS 14
-#define LCP_MAX ((1<<LCP_BITS) - 1)
-#define LCP_SHIFT (32-LCP_BITS)
+#define LCP_MAX ((1LL<<LCP_BITS) - 1)
+#define LCP_SHIFT (38-LCP_BITS)
 #define LCP_MASK (LCP_MAX << LCP_SHIFT)
-#define POS_MASK ((1<<LCP_SHIFT) - 1)
+#define POS_MASK ((1LL<<LCP_SHIFT) - 1)
 
 #define NMATCHES_PER_OFFSET 8
 #define MATCHES_PER_OFFSET_SHIFT 3
@@ -50,8 +50,8 @@
 
 /** One match */
 typedef struct _lz4ultra_match {
-   unsigned short length;
-   unsigned short offset;
+   unsigned int length;
+   unsigned int offset;
 } lz4ultra_match;
 
 /**
@@ -73,13 +73,13 @@ int lz4ultra_compressor_init(lsza_compressor *pCompressor, const int nMaxWindowS
    pCompressor->num_commands = 0;
 
    if (!nResult) {
-      pCompressor->intervals = (unsigned int *)malloc(nMaxWindowSize * sizeof(unsigned int));
+      pCompressor->intervals = (unsigned long long *)malloc(nMaxWindowSize * sizeof(unsigned long long));
 
       if (pCompressor->intervals) {
-         pCompressor->pos_data = (unsigned int *)malloc(nMaxWindowSize * sizeof(unsigned int));
+         pCompressor->pos_data = (unsigned long long *)malloc(nMaxWindowSize * sizeof(unsigned long long));
 
          if (pCompressor->pos_data) {
-            pCompressor->open_intervals = (unsigned int *)malloc((LCP_MAX + 1) * sizeof(unsigned int));
+            pCompressor->open_intervals = (unsigned long long *)malloc((LCP_MAX + 1) * sizeof(unsigned long long));
 
             if (pCompressor->open_intervals) {
                pCompressor->match = (lz4ultra_match *)malloc(nMaxWindowSize * NMATCHES_PER_OFFSET * sizeof(lz4ultra_match));
@@ -134,22 +134,28 @@ void lz4ultra_compressor_destroy(lsza_compressor *pCompressor) {
  * @return 0 for success, non-zero for failure
  */
 static int lz4ultra_build_suffix_array(lsza_compressor *pCompressor, const unsigned char *pInWindow, const int nInWindowSize) {
-   unsigned int *intervals = pCompressor->intervals;
+   unsigned long long *intervals = pCompressor->intervals;
 
    /* Build suffix array from input data */
-   if (divsufsort_build_array(&pCompressor->divsufsort_context, pInWindow, (saidx_t*)intervals, nInWindowSize) != 0) {
+   saidx_t *suffixArray = (saidx_t*)intervals;
+   if (divsufsort_build_array(&pCompressor->divsufsort_context, pInWindow, suffixArray, nInWindowSize) != 0) {
       return 100;
+   }
+
+   int i;
+
+   for (i = nInWindowSize - 1; i >= 0; i--) {
+      intervals[i] = suffixArray[i];
    }
 
    int *PLCP = (int*)pCompressor->pos_data;  /* Use temporarily */
    int *Phi = PLCP;
    int nCurLen = 0;
-   int i;
 
    /* Compute the permuted LCP first (Kärkkäinen method) */
    Phi[intervals[0]] = -1;
    for (i = 1; i < nInWindowSize; i++)
-      Phi[intervals[i]] = intervals[i - 1];
+      Phi[intervals[i]] = (unsigned int)intervals[i - 1];
    for (i = 0; i < nInWindowSize; i++) {
       if (Phi[i] == -1) {
          PLCP[i] = 0;
@@ -173,7 +179,7 @@ static int lz4ultra_build_suffix_array(lsza_compressor *pCompressor, const unsig
          nLen = 0;
       if (nLen > LCP_MAX)
          nLen = LCP_MAX;
-      intervals[i] = ((unsigned int)nIndex) | (((unsigned int)nLen) << LCP_SHIFT);
+      intervals[i] = ((unsigned long long)nIndex) | (((unsigned long long)nLen) << LCP_SHIFT);
    }
    if (i < nInWindowSize)
       intervals[i] &= POS_MASK;
@@ -184,20 +190,20 @@ static int lz4ultra_build_suffix_array(lsza_compressor *pCompressor, const unsig
     * Methodology and code fragment taken from wimlib (CC0 license):
     * https://wimlib.net/git/?p=wimlib;a=blob_plain;f=src/lcpit_matchfinder.c;h=a2d6a1e0cd95200d1f3a5464d8359d5736b14cbe;hb=HEAD
     */
-   unsigned int * const SA_and_LCP = intervals;
-   unsigned int *pos_data = pCompressor->pos_data;
-   unsigned int next_interval_idx;
-   unsigned int *top = pCompressor->open_intervals;
-   unsigned int prev_pos = SA_and_LCP[0] & POS_MASK;
+   unsigned long long * const SA_and_LCP = intervals;
+   unsigned long long *pos_data = pCompressor->pos_data;
+   unsigned long long next_interval_idx;
+   unsigned long long *top = pCompressor->open_intervals;
+   unsigned long long prev_pos = SA_and_LCP[0] & POS_MASK;
 
    *top = 0;
    intervals[0] = 0;
    next_interval_idx = 1;
 
    for (int r = 1; r < nInWindowSize; r++) {
-      const unsigned int next_pos = SA_and_LCP[r] & POS_MASK;
-      const unsigned int next_lcp = SA_and_LCP[r] & LCP_MASK;
-      const unsigned int top_lcp = *top & LCP_MASK;
+      const unsigned long long next_pos = SA_and_LCP[r] & POS_MASK;
+      const unsigned long long next_lcp = SA_and_LCP[r] & LCP_MASK;
+      const unsigned long long top_lcp = *top & LCP_MASK;
 
       if (next_lcp == top_lcp) {
          /* Continuing the deepest open interval  */
@@ -212,8 +218,8 @@ static int lz4ultra_build_suffix_array(lsza_compressor *pCompressor, const unsig
          /* Closing the deepest open interval  */
          pos_data[prev_pos] = *top;
          for (;;) {
-            const unsigned int closed_interval_idx = *top-- & POS_MASK;
-            const unsigned int superinterval_lcp = *top & LCP_MASK;
+            const unsigned long long closed_interval_idx = *top-- & POS_MASK;
+            const unsigned long long superinterval_lcp = *top & LCP_MASK;
 
             if (next_lcp == superinterval_lcp) {
                /* Continuing the superinterval */
@@ -258,11 +264,11 @@ static int lz4ultra_build_suffix_array(lsza_compressor *pCompressor, const unsig
  * @return number of matches
  */
 static int lz4ultra_find_matches_at(lsza_compressor *pCompressor, const int nOffset, lz4ultra_match *pMatches, const int nMaxMatches) {
-   unsigned int *intervals = pCompressor->intervals;
-   unsigned int *pos_data = pCompressor->pos_data;
-   unsigned int ref;
-   unsigned int super_ref;
-   unsigned int match_pos;
+   unsigned long long *intervals = pCompressor->intervals;
+   unsigned long long *pos_data = pCompressor->pos_data;
+   unsigned long long ref;
+   unsigned long long super_ref;
+   unsigned long long match_pos;
    lz4ultra_match *matchptr;
 
    /**
@@ -307,14 +313,14 @@ static int lz4ultra_find_matches_at(lsza_compressor *pCompressor, const int nOff
       while ((super_ref = pos_data[match_pos]) > ref)
          match_pos = intervals[super_ref & POS_MASK];
       intervals[ref & POS_MASK] = nOffset;
-      pos_data[match_pos] = ref;
+      pos_data[match_pos] = (unsigned long long)ref;
 
       if ((matchptr - pMatches) < nMaxMatches) {
          int nMatchOffset = (int)(nOffset - match_pos);
 
          if (nMatchOffset <= MAX_OFFSET) {
-            matchptr->length = (unsigned short)(ref >> LCP_SHIFT);
-            matchptr->offset = (unsigned short)nMatchOffset;
+            matchptr->length = (unsigned int)(ref >> LCP_SHIFT);
+            matchptr->offset = (unsigned int)nMatchOffset;
             matchptr++;
          }
       }
@@ -371,8 +377,8 @@ static void lz4ultra_find_all_matches(lsza_compressor *pCompressor, const int nS
             int nMaxLen = (nEndOffset - LAST_LITERALS) - i;
             if (nMaxLen < 0)
                nMaxLen = 0;
-            if (pMatch->length > nMaxLen)
-               pMatch->length = (unsigned short)nMaxLen;
+            if (pMatch->length > (unsigned int)nMaxLen)
+               pMatch->length = (unsigned int)nMaxLen;
          }
 
          pMatch++;

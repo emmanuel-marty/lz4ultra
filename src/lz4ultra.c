@@ -32,6 +32,7 @@
 #include "format.h"
 #include "shrink.h"
 #include "expand.h"
+#include "xxhash.h"
 
 #define BLOCK_SIZE 65536
 #define OPT_VERBOSE 1
@@ -58,12 +59,14 @@ static long long lz4ultra_get_time() {
 
 /*---------------------------------------------------------------------------*/
 
-static int lz4ultra_compress(const char *pszInFilename, const char *pszOutFilename, const unsigned int nOptions) {
+static int lz4ultra_compress(const char *pszInFilename, const char *pszOutFilename, const unsigned int nOptions, int nBlockMaxCode, bool bIndependentBlocks) {
    FILE *f_in, *f_out;
    unsigned char *pInData, *pOutData;
    lsza_compressor compressor;
    long long nStartTime = 0LL, nEndTime = 0LL;
    long long nOriginalSize = 0LL, nCompressedSize = 0LL;
+   int nBlockMaxBits = 8 + (nBlockMaxCode << 1);
+   int nBlockMaxSize = 1 << nBlockMaxBits;
    int nResult;
    bool bError = false;
 
@@ -79,7 +82,7 @@ static int lz4ultra_compress(const char *pszInFilename, const char *pszOutFilena
       return 100;
    }
 
-   pInData = (unsigned char*)malloc(BLOCK_SIZE * 2);
+   pInData = (unsigned char*)malloc(nBlockMaxSize + BLOCK_SIZE);
    if (!pInData) {
       fclose(f_out);
       f_out = NULL;
@@ -90,9 +93,9 @@ static int lz4ultra_compress(const char *pszInFilename, const char *pszOutFilena
       fprintf(stderr, "out of memory\n");
       return 100;
    }
-   memset(pInData, 0, BLOCK_SIZE * 2);
+   memset(pInData, 0, nBlockMaxSize + BLOCK_SIZE);
 
-   pOutData = (unsigned char*)malloc(BLOCK_SIZE);
+   pOutData = (unsigned char*)malloc(nBlockMaxSize);
    if (!pOutData) {
       free(pInData);
       pInData = NULL;
@@ -106,9 +109,9 @@ static int lz4ultra_compress(const char *pszInFilename, const char *pszOutFilena
       fprintf(stderr, "out of memory\n");
       return 100;
    }
-   memset(pInData, 0, BLOCK_SIZE);
+   memset(pInData, 0, nBlockMaxSize);
 
-   nResult = lz4ultra_compressor_init(&compressor, BLOCK_SIZE * 2);
+   nResult = lz4ultra_compressor_init(&compressor, nBlockMaxSize + BLOCK_SIZE);
    if (nResult != 0) {
       free(pOutData);
       pOutData = NULL;
@@ -135,8 +138,12 @@ static int lz4ultra_compress(const char *pszInFilename, const char *pszOutFilena
       cHeader[3] = 0x18;
 
       cHeader[4] = 0b01000000;                        /* Version.Hi Version.Lo !B.Indep B.Checksum Content.Size Content.Checksum Reserved.Hi Reserved.Lo */
-      cHeader[5] = 4 << 4;                            /* Block MaxSize */
-      cHeader[6] = 0xc0;                              /* Header checksum for xxHash32 */
+      if (bIndependentBlocks)
+         cHeader[4] |= 0b00100000;                    /*                       B.Indep */
+      cHeader[5] = nBlockMaxCode << 4;                /* Block MaxSize */
+
+      XXH32_hash_t headerSum = XXH32(cHeader + 4, 2, 0);
+      cHeader[6] = (headerSum >> 8) & 0xff;           /* Header checksum */
 
       bError = fwrite(cHeader, 1, 7, f_out) != 7;
       nCompressedSize += 7LL;
@@ -144,6 +151,7 @@ static int lz4ultra_compress(const char *pszInFilename, const char *pszOutFilena
 
    if (nOptions & OPT_VERBOSE) {
       nStartTime = lz4ultra_get_time();
+      fprintf(stdout, "Use %d Kb blocks, independent blocks: %s\n", nBlockMaxSize >> 10, bIndependentBlocks ? "yes" : "no");
    }
 
    int nPreviousBlockSize = 0;
@@ -152,10 +160,10 @@ static int lz4ultra_compress(const char *pszInFilename, const char *pszOutFilena
       int nInDataSize;
 
       if (nPreviousBlockSize) {
-         memcpy(pInData, pInData + BLOCK_SIZE, nPreviousBlockSize);
+         memcpy(pInData, pInData + BLOCK_SIZE + (nBlockMaxSize - BLOCK_SIZE), nPreviousBlockSize);
       }
 
-      nInDataSize = (int)fread(pInData + BLOCK_SIZE, 1, BLOCK_SIZE, f_in);
+      nInDataSize = (int)fread(pInData + BLOCK_SIZE, 1, nBlockMaxSize, f_in);
       if (nInDataSize > 0) {
          if (nPreviousBlockSize && (nOptions & OPT_RAW) != 0) {
             fprintf(stderr, "error: raw blocks can only be used with files <= 64 Kb\n");
@@ -165,7 +173,7 @@ static int lz4ultra_compress(const char *pszInFilename, const char *pszOutFilena
 
          int nOutDataSize;
 
-         nOutDataSize = lz4ultra_shrink_block(&compressor, pInData + BLOCK_SIZE - nPreviousBlockSize, nPreviousBlockSize, nInDataSize, pOutData, (nInDataSize >= BLOCK_SIZE) ? BLOCK_SIZE : nInDataSize);
+         nOutDataSize = lz4ultra_shrink_block(&compressor, pInData + BLOCK_SIZE - nPreviousBlockSize, nPreviousBlockSize, nInDataSize, pOutData, (nInDataSize >= nBlockMaxSize) ? nBlockMaxSize : nInDataSize);
          if (nOutDataSize >= 0) {
             /* Write compressed block */
 
@@ -222,7 +230,14 @@ static int lz4ultra_compress(const char *pszInFilename, const char *pszOutFilena
             }
          }
 
-         nPreviousBlockSize = nInDataSize;
+         if (!bIndependentBlocks) {
+            nPreviousBlockSize = nInDataSize;
+            if (nPreviousBlockSize > BLOCK_SIZE)
+               nPreviousBlockSize = BLOCK_SIZE;
+         }
+         else {
+            nPreviousBlockSize = 0;
+         }
       }
 
       if (!bError && !feof(f_in) && nOriginalSize >= 1024 * 1024) {
@@ -290,6 +305,8 @@ static int lz4ultra_decompress(const char *pszInFilename, const char *pszOutFile
    long long nStartTime = 0LL, nEndTime = 0LL;
    long long nOriginalSize = 0LL;
    unsigned int nFileSize = 0;
+   int nBlockMaxCode = 4;
+   bool bIndependentBlocks = false;
 
    FILE *pInFile = fopen(pszInFilename, "rb");
    if (!pInFile) {
@@ -313,14 +330,24 @@ static int lz4ultra_decompress(const char *pszInFilename, const char *pszOutFile
          cHeader[1] != 0x22 ||
          cHeader[2] != 0x4D ||
          cHeader[3] != 0x18 ||
-         cHeader[4] != 0b01000000 ||
-         cHeader[5] != (4 << 4) ||
-         cHeader[6] != 0xc0) {
+         (cHeader[4] & 0xc0) != 0b01000000 ||
+         (cHeader[5] & 0x0f) != 0) {
          fclose(pInFile);
          pInFile = NULL;
-         fprintf(stderr, "invalid magic number, version, flags, block size or checksum in input file\n");
+         fprintf(stderr, "invalid magic number, version, flags, or block size in input file\n");
          return 100;
       }
+
+      XXH32_hash_t headerSum = XXH32(cHeader + 4, 2, 0);
+      if (((headerSum >> 8) & 0xff) != cHeader[6]) {
+         fclose(pInFile);
+         pInFile = NULL;
+         fprintf(stderr, "invalid checksum in input file\n");
+         return 100;
+      }
+
+      bIndependentBlocks = (cHeader[4] & 0x20) != 0;
+      nBlockMaxCode = (cHeader[5] >> 4);
    }
    else {
       fseek(pInFile, 0, SEEK_END);
@@ -345,8 +372,10 @@ static int lz4ultra_decompress(const char *pszInFilename, const char *pszOutFile
 
    unsigned char *pInBlock;
    unsigned char *pOutData;
+   int nBlockMaxBits = 8 + (nBlockMaxCode << 1);
+   int nBlockMaxSize = 1 << nBlockMaxBits;
 
-   pInBlock = (unsigned char*)malloc(BLOCK_SIZE);
+   pInBlock = (unsigned char*)malloc(nBlockMaxSize);
    if (!pInBlock) {
       fclose(pOutFile);
       pOutFile = NULL;
@@ -357,7 +386,7 @@ static int lz4ultra_decompress(const char *pszInFilename, const char *pszOutFile
       return 100;
    }
 
-   pOutData = (unsigned char*)malloc(BLOCK_SIZE * 2);
+   pOutData = (unsigned char*)malloc(nBlockMaxSize + BLOCK_SIZE);
    if (!pOutData) {
       free(pInBlock);
       pInBlock = NULL;
@@ -383,7 +412,7 @@ static int lz4ultra_decompress(const char *pszInFilename, const char *pszOutFile
       unsigned int nBlockSize = 0;
 
       if (nPrevDecompressedSize != 0) {
-         memcpy(pOutData + BLOCK_SIZE - nPrevDecompressedSize, pOutData + BLOCK_SIZE, nPrevDecompressedSize);
+         memcpy(pOutData + BLOCK_SIZE - nPrevDecompressedSize, pOutData + BLOCK_SIZE + (nBlockMaxSize - BLOCK_SIZE), nPrevDecompressedSize);
       }
 
       if ((nOptions & OPT_RAW) == 0) {
@@ -415,7 +444,7 @@ static int lz4ultra_decompress(const char *pszInFilename, const char *pszOutFile
             else {
                unsigned int nBlockOffs = 0;
 
-               nDecompressedSize = lz4ultra_expand_block(pInBlock, nBlockSize, pOutData, BLOCK_SIZE, BLOCK_SIZE);
+               nDecompressedSize = lz4ultra_expand_block(pInBlock, nBlockSize, pOutData, BLOCK_SIZE, nBlockMaxSize);
                if (nDecompressedSize < 0) {
                   nDecompressionError = nDecompressedSize;
                   break;
@@ -426,7 +455,14 @@ static int lz4ultra_decompress(const char *pszInFilename, const char *pszOutFile
                nOriginalSize += (long long)nDecompressedSize;
 
                fwrite(pOutData + BLOCK_SIZE, 1, nDecompressedSize, pOutFile);
-               nPrevDecompressedSize = nDecompressedSize;
+               if (!bIndependentBlocks) {
+                  nPrevDecompressedSize = nDecompressedSize;
+                  if (nPrevDecompressedSize > BLOCK_SIZE)
+                     nPrevDecompressedSize = BLOCK_SIZE;
+               }
+               else {
+                  nPrevDecompressedSize = 0;
+               }
                nDecompressedSize = 0;
             }
          }
@@ -473,6 +509,8 @@ static int lz4ultra_compare(const char *pszInFilename, const char *pszOutFilenam
    long long nOriginalSize = 0LL;
    long long nKnownGoodSize = 0LL;
    unsigned int nFileSize = 0;
+   int nBlockMaxCode = 4;
+   bool bIndependentBlocks = false;
 
    FILE *pInFile = fopen(pszInFilename, "rb");
    if (!pInFile) {
@@ -496,14 +534,24 @@ static int lz4ultra_compare(const char *pszInFilename, const char *pszOutFilenam
          cHeader[1] != 0x22 ||
          cHeader[2] != 0x4D ||
          cHeader[3] != 0x18 ||
-         cHeader[4] != 0b01000000 ||
-         cHeader[5] != (4 << 4) ||
-         cHeader[6] != 0xc0) {
+         (cHeader[4] & 0xc0) != 0b01000000 ||
+         (cHeader[5] & 0x0f) != 0) {
          fclose(pInFile);
          pInFile = NULL;
-         fprintf(stderr, "invalid magic number, version, flags, block size or checksum in input file\n");
+         fprintf(stderr, "invalid magic number, version, flags, or block size in input file\n");
          return 100;
       }
+
+      XXH32_hash_t headerSum = XXH32(cHeader + 4, 2, 0);
+      if (((headerSum >> 8) & 0xff) != cHeader[6]) {
+         fclose(pInFile);
+         pInFile = NULL;
+         fprintf(stderr, "invalid checksum in input file\n");
+         return 100;
+      }
+
+      bIndependentBlocks = (cHeader[4] & 0x20) != 0;
+      nBlockMaxCode = (cHeader[5] >> 4);
    }
    else {
       fseek(pInFile, 0, SEEK_END);
@@ -529,8 +577,10 @@ static int lz4ultra_compare(const char *pszInFilename, const char *pszOutFilenam
    unsigned char *pInBlock;
    unsigned char *pOutData;
    unsigned char *pCompareData;
+   int nBlockMaxBits = 8 + (nBlockMaxCode << 1);
+   int nBlockMaxSize = 1 << nBlockMaxBits;
 
-   pInBlock = (unsigned char*)malloc(BLOCK_SIZE);
+   pInBlock = (unsigned char*)malloc(nBlockMaxSize);
    if (!pInBlock) {
       fclose(pOutFile);
       pOutFile = NULL;
@@ -541,7 +591,7 @@ static int lz4ultra_compare(const char *pszInFilename, const char *pszOutFilenam
       return 100;
    }
 
-   pOutData = (unsigned char*)malloc(BLOCK_SIZE * 2);
+   pOutData = (unsigned char*)malloc(nBlockMaxSize + BLOCK_SIZE);
    if (!pOutData) {
       free(pInBlock);
       pInBlock = NULL;
@@ -555,7 +605,7 @@ static int lz4ultra_compare(const char *pszInFilename, const char *pszOutFilenam
       return 100;
    }
 
-   pCompareData = (unsigned char*)malloc(BLOCK_SIZE);
+   pCompareData = (unsigned char*)malloc(nBlockMaxSize);
    if (!pCompareData) {
       free(pOutData);
       pOutData = NULL;
@@ -584,10 +634,10 @@ static int lz4ultra_compare(const char *pszInFilename, const char *pszOutFilenam
       unsigned int nBlockSize = 0;
 
       if (nPrevDecompressedSize != 0) {
-         memcpy(pOutData + BLOCK_SIZE - nPrevDecompressedSize, pOutData + BLOCK_SIZE, nPrevDecompressedSize);
+         memcpy(pOutData + BLOCK_SIZE - nPrevDecompressedSize, pOutData + BLOCK_SIZE + (nBlockMaxSize - BLOCK_SIZE), nPrevDecompressedSize);
       }
 
-      int nBytesToCompare = (int)fread(pCompareData, 1, BLOCK_SIZE, pOutFile);
+      int nBytesToCompare = (int)fread(pCompareData, 1, nBlockMaxSize, pOutFile);
 
       if ((nOptions & OPT_RAW) == 0) {
          unsigned char cBlockSize[4];
@@ -620,7 +670,7 @@ static int lz4ultra_compare(const char *pszInFilename, const char *pszOutFilenam
             else {
                unsigned int nBlockOffs = 0;
 
-               nDecompressedSize = lz4ultra_expand_block(pInBlock, nBlockSize, pOutData, BLOCK_SIZE, BLOCK_SIZE);
+               nDecompressedSize = lz4ultra_expand_block(pInBlock, nBlockSize, pOutData, BLOCK_SIZE, nBlockMaxSize);
                if (nDecompressedSize < 0) {
                   nDecompressionError = nDecompressedSize;
                   break;
@@ -634,10 +684,18 @@ static int lz4ultra_compare(const char *pszInFilename, const char *pszOutFilenam
 
                if (memcmp(pOutData + BLOCK_SIZE, pCompareData, nBytesToCompare))
                   bComparisonError = true;
-               nPrevDecompressedSize = nDecompressedSize;
+               if (!bIndependentBlocks) {
+                  nPrevDecompressedSize = nDecompressedSize;
+                  if (nPrevDecompressedSize > BLOCK_SIZE)
+                     nPrevDecompressedSize = BLOCK_SIZE;
+               }
+               else {
+                  nPrevDecompressedSize = 0;
+               }
                nDecompressedSize = 0;
             }
             else {
+               fprintf(stdout, "size difference: %d != %d\n", nDecompressedSize, nBytesToCompare);
                bComparisonError = true;
                break;
             }
@@ -696,6 +754,10 @@ int main(int argc, char **argv) {
    bool bArgsError = false;
    bool bCommandDefined = false;
    bool bVerifyCompression = false;
+   int nBlockMaxCode = 4;
+   bool bBlockCodeDefined = false;
+   bool bIndependentBlocks = false;
+   bool bBlockDependenceDefined = false;
    char cCommand = 'z';
    unsigned int nOptions = 0;
 
@@ -719,6 +781,31 @@ int main(int argc, char **argv) {
       else if (!strcmp(argv[i], "-c")) {
          if (!bVerifyCompression) {
             bVerifyCompression = true;
+         }
+         else
+            bArgsError = true;
+      }
+      else if (!strcmp(argv[i], "-BD")) {
+         if (!bBlockDependenceDefined) {
+            bBlockDependenceDefined = true;
+            bIndependentBlocks = false;
+         }
+         else
+            bArgsError = true;
+      }
+      else if (!strcmp(argv[i], "-BI")) {
+         if (!bBlockDependenceDefined) {
+            bBlockDependenceDefined = true;
+            bIndependentBlocks = true;
+         }
+         else
+            bArgsError = true;
+      }
+      else if (!strncmp(argv[i], "-B", 2)) {
+         if (!bBlockCodeDefined) {
+            nBlockMaxCode = atoi(argv[i] + 2);
+            if (nBlockMaxCode < 4 || nBlockMaxCode > 7)
+               bArgsError = true;
          }
          else
             bArgsError = true;
@@ -753,13 +840,16 @@ int main(int argc, char **argv) {
       fprintf(stderr, "usage: %s [-c] [-d] [-v] [-r] <infile> <outfile>\n", argv[0]);
       fprintf(stderr, "       -c: check resulting stream after compressing\n");
       fprintf(stderr, "       -d: decompress (default: compress)\n");
+      fprintf(stderr, "   -B4..7: compress with 64, 256, 1024 or 4096 Kb blocks (defaults to 64)\n");
+      fprintf(stderr, "      -BD: use block-dependent compression (default)\n");
+      fprintf(stderr, "      -BI: use block-independent compression\n");
       fprintf(stderr, "       -v: be verbose\n");
       fprintf(stderr, "       -r: raw block format (max. 64 Kb files)\n");
       return 100;
    }
 
    if (cCommand == 'z') {
-      int nResult = lz4ultra_compress(pszInFilename, pszOutFilename, nOptions);
+      int nResult = lz4ultra_compress(pszInFilename, pszOutFilename, nOptions, nBlockMaxCode, bIndependentBlocks);
       if (nResult == 0 && bVerifyCompression) {
          nResult = lz4ultra_compare(pszOutFilename, pszInFilename, nOptions);
       }
