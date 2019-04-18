@@ -568,20 +568,21 @@ static void lz4ultra_optimize_command_count(lsza_compressor *pCompressor, const 
          int nMatchLen = pMatch->length;
          int nReduce = 0;
 
-         if (nMatchLen <= 19) {
+         if (nMatchLen <= 19 && (i + nMatchLen) < nEndOffset) {
             int nMatchOffset = pMatch->offset;
             int nEncodedMatchLen = nMatchLen - MIN_MATCH_SIZE;
             int nCommandSize = 1 /* token */ + lz4ultra_get_literals_varlen_size(nNumLiterals) + 2 /* match offset */ + lz4ultra_get_match_varlen_size(nEncodedMatchLen);
 
-            if ((i + nMatchLen) < nEndOffset && pCompressor->match[(i + nMatchLen) << MATCHES_PER_OFFSET_SHIFT].length >= MIN_MATCH_SIZE &&
-               nCommandSize >= (nMatchLen + lz4ultra_get_literals_varlen_size(nNumLiterals + nMatchLen))) {
-               /* This command is a match; the next command is also a match. The next command currently has no literals; replacing this command by literals will
-                * make the next command eat the cost of encoding the current number of literals, + nMatchLen extra literals. The size of the current match command is
-                * at least as much as the number of literal bytes + the extra cost of encoding them in the next match command, so we can safely replace the current
-                * match command by literals, the output size will not increase and it will remove one command. */
-               nReduce = 1;
+            if (pCompressor->match[(i + nMatchLen) << MATCHES_PER_OFFSET_SHIFT].length >= MIN_MATCH_SIZE) {
+               if (nCommandSize >= (nMatchLen + lz4ultra_get_literals_varlen_size(nNumLiterals + nMatchLen))) {
+                  /* This command is a match; the next command is also a match. The next command currently has no literals; replacing this command by literals will
+                   * make the next command eat the cost of encoding the current number of literals, + nMatchLen extra literals. The size of the current match command is
+                   * at least as much as the number of literal bytes + the extra cost of encoding them in the next match command, so we can safely replace the current
+                   * match command by literals, the output size will not increase and it will remove one command. */
+                  nReduce = 1;
+               }
             }
-            else if ((i + nMatchLen) < nEndOffset && pCompressor->match[(i + nMatchLen) << MATCHES_PER_OFFSET_SHIFT].length < MIN_MATCH_SIZE) {
+            else {
                int nCurIndex = i + nMatchLen;
                int nNextNumLiterals = 0;
 
