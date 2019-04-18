@@ -65,8 +65,9 @@ static int lz4ultra_compress(const char *pszInFilename, const char *pszOutFilena
    lsza_compressor compressor;
    long long nStartTime = 0LL, nEndTime = 0LL;
    long long nOriginalSize = 0LL, nCompressedSize = 0LL;
-   int nBlockMaxBits = 8 + (nBlockMaxCode << 1);
-   int nBlockMaxSize = 1 << nBlockMaxBits;
+   long long nFileSize = 0LL;
+   int nBlockMaxBits;
+   int nBlockMaxSize;
    int nResult;
    bool bError = false;
 
@@ -81,6 +82,24 @@ static int lz4ultra_compress(const char *pszInFilename, const char *pszOutFilena
       fprintf(stderr, "error opening '%s' for writing\n", pszOutFilename);
       return 100;
    }
+
+   fseek(f_in, 0, SEEK_END);
+#ifdef _WIN32
+   nFileSize = (long long)_ftelli64(f_in);
+#else
+   nFileSize = (long long)ftell(f_in);
+#endif
+   fseek(f_in, 0, SEEK_SET);
+
+   do {
+      nBlockMaxBits = 8 + (nBlockMaxCode << 1);
+      nBlockMaxSize = 1 << nBlockMaxBits;
+      if (nBlockMaxCode > 4 && nBlockMaxSize > nFileSize) {
+         nBlockMaxCode--;
+      }
+      else
+         break;
+   } while (1);
 
    pInData = (unsigned char*)malloc(nBlockMaxSize + BLOCK_SIZE);
    if (!pInData) {
@@ -754,7 +773,7 @@ int main(int argc, char **argv) {
    bool bArgsError = false;
    bool bCommandDefined = false;
    bool bVerifyCompression = false;
-   int nBlockMaxCode = 4;
+   int nBlockMaxCode = 7;
    bool bBlockCodeDefined = false;
    bool bIndependentBlocks = false;
    bool bBlockDependenceDefined = false;
@@ -840,7 +859,7 @@ int main(int argc, char **argv) {
       fprintf(stderr, "usage: %s [-c] [-d] [-v] [-r] <infile> <outfile>\n", argv[0]);
       fprintf(stderr, "       -c: check resulting stream after compressing\n");
       fprintf(stderr, "       -d: decompress (default: compress)\n");
-      fprintf(stderr, "   -B4..7: compress with 64, 256, 1024 or 4096 Kb blocks (defaults to 64)\n");
+      fprintf(stderr, "   -B4..7: compress with 64, 256, 1024 or 4096 Kb blocks (defaults to -B7)\n");
       fprintf(stderr, "      -BD: use block-dependent compression (default)\n");
       fprintf(stderr, "      -BI: use block-independent compression\n");
       fprintf(stderr, "       -v: be verbose\n");
