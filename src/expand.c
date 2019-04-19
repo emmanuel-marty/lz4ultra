@@ -92,26 +92,27 @@ static inline FORCE_INLINE int lz4ultra_expand_match_slow(const unsigned char **
    else {
       /* Do a deterministic, left to right byte copy instead of memcpy() so as to handle overlaps */
 
-      int nMaxFast = nMatchLen;
-      if (nMaxFast > (pCurOutData - pSrc))
-         nMaxFast = (int)(pCurOutData - pSrc);
-      if ((pCurOutData + nMaxFast) > (pOutDataFastEnd - 15))
-         nMaxFast = (int)(pOutDataFastEnd - 15 - pCurOutData);
+      if ((pCurOutData - pSrc) >= 8) {
+         int nMaxFast = nMatchLen;
+         if ((pCurOutData + nMaxFast) > (pOutDataFastEnd - 15))
+            nMaxFast = (int)(pOutDataFastEnd - 15 - pCurOutData);
 
-      if (nMaxFast > 0) {
-         const unsigned char *pCopySrc = pSrc;
-         unsigned char *pCopyDst = pCurOutData;
-         const unsigned char *pCopyEndDst = pCurOutData + nMaxFast;
+         if (nMaxFast > 0) {
+            const unsigned char *pCopySrc = pSrc;
+            unsigned char *pCopyDst = pCurOutData;
+            const unsigned char *pCopyEndDst = pCurOutData + nMaxFast;
 
-         do {
-            memcpy(pCopyDst, pCopySrc, 16);
-            pCopySrc += 16;
-            pCopyDst += 16;
-         } while (pCopyDst < pCopyEndDst);
+            do {
+               memcpy(pCopyDst, pCopySrc, 8);
+               memcpy(pCopyDst + 8, pCopySrc+8, 8);
+               pCopySrc += 16;
+               pCopyDst += 16;
+            } while (pCopyDst < pCopyEndDst);
 
-         pCurOutData += nMaxFast;
-         pSrc += nMaxFast;
-         nMatchLen -= nMaxFast;
+            pCurOutData += nMaxFast;
+            pSrc += nMaxFast;
+            nMatchLen -= nMaxFast;
+         }
       }
 
       while (nMatchLen >= 4) {
