@@ -156,8 +156,8 @@ int lz4ultra_expand_block(const unsigned char *pInBlock, int nBlockSize, unsigne
       const unsigned char token = *pInBlock++;
       int nLiterals = (int)((unsigned int)((token & 0xf0) >> 4));
 
-      if (nLiterals < 7) {
-         memcpy(pCurOutData, pInBlock, 8);
+      if (nLiterals < 15) {
+         memcpy(pCurOutData, pInBlock, 16);
          pInBlock += nLiterals;
          pCurOutData += nLiterals;
       }
