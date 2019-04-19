@@ -428,7 +428,6 @@ static int lz4ultra_decompress(const char *pszInFilename, const char *pszOutFile
    int nPrevDecompressedSize = 0;
 
    while (!feof(pInFile) && !nDecompressionError) {
-      unsigned char cBlockSize[4];
       unsigned int nBlockSize = 0;
 
       if (nPrevDecompressedSize != 0) {
@@ -436,6 +435,9 @@ static int lz4ultra_decompress(const char *pszInFilename, const char *pszOutFile
       }
 
       if ((nOptions & OPT_RAW) == 0) {
+         unsigned char cBlockSize[4];
+
+         memset(cBlockSize, 0, 4);
          if (fread(cBlockSize, 1, 4, pInFile) == 4) {
             nBlockSize = ((unsigned int)cBlockSize[0]) |
                (((unsigned int)cBlockSize[1]) << 8) |
@@ -447,7 +449,8 @@ static int lz4ultra_decompress(const char *pszInFilename, const char *pszOutFile
          }
       }
       else {
-         nBlockSize = nFileSize - 2;
+         if (nFileSize >= 2)
+            nBlockSize = nFileSize - 2;
          nFileSize = 0;
       }
 
@@ -456,6 +459,10 @@ static int lz4ultra_decompress(const char *pszInFilename, const char *pszOutFile
          int nDecompressedSize = 0;
 
          nBlockSize &= 0x7fffffff;
+         if ((int)nBlockSize > nBlockMaxSize) {
+            fprintf(stderr, "block size %d > max size %d\n", nBlockSize, nBlockMaxSize);
+            break;
+         }
          if (fread(pInBlock, 1, nBlockSize, pInFile) == nBlockSize) {
             if (bIsUncompressed) {
                memcpy(pOutData + BLOCK_SIZE, pInBlock, nBlockSize);
@@ -662,6 +669,7 @@ static int lz4ultra_compare(const char *pszInFilename, const char *pszOutFilenam
       if ((nOptions & OPT_RAW) == 0) {
          unsigned char cBlockSize[4];
 
+         memset(cBlockSize, 0, 4);
          if (fread(cBlockSize, 1, 4, pInFile) == 4) {
             nBlockSize = ((unsigned int)cBlockSize[0]) |
                (((unsigned int)cBlockSize[1]) << 8) |
@@ -673,7 +681,8 @@ static int lz4ultra_compare(const char *pszInFilename, const char *pszOutFilenam
          }
       }
       else {
-         nBlockSize = nFileSize - 2;
+         if (nFileSize >= 2)
+            nBlockSize = nFileSize - 2;
          nFileSize = 0;
       }
 
@@ -682,6 +691,10 @@ static int lz4ultra_compare(const char *pszInFilename, const char *pszOutFilenam
          int nDecompressedSize = 0;
 
          nBlockSize &= 0x7fffffff;
+         if ((int)nBlockSize > nBlockMaxSize) {
+            fprintf(stderr, "%s: block size %d > max size %d\n", pszInFilename, nBlockSize, nBlockMaxSize);
+            break;
+         }
          if (fread(pInBlock, 1, nBlockSize, pInFile) == nBlockSize) {
             if (bIsUncompressed) {
                memcpy(pOutData + BLOCK_SIZE, pInBlock, nBlockSize);
@@ -715,7 +728,7 @@ static int lz4ultra_compare(const char *pszInFilename, const char *pszOutFilenam
                nDecompressedSize = 0;
             }
             else {
-               fprintf(stdout, "size difference: %d != %d\n", nDecompressedSize, nBytesToCompare);
+               fprintf(stderr, "size difference: %d != %d\n", nDecompressedSize, nBytesToCompare);
                bComparisonError = true;
                break;
             }
