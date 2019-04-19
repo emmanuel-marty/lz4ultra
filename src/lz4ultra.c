@@ -261,6 +261,7 @@ static int lz4ultra_compress(const char *pszInFilename, const char *pszOutFilena
 
       if (!bError && !feof(f_in) && nOriginalSize >= 1024 * 1024) {
          fprintf(stdout, "\r%lld => %lld (%g %%)", nOriginalSize, nCompressedSize, (double)(nCompressedSize * 100.0 / nOriginalSize));
+         fflush(stdout);
       }
    }
 
