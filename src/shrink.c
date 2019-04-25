@@ -49,6 +49,8 @@
 #define LAST_MATCH_OFFSET 12
 #define LAST_LITERALS 5
 
+#define MODESWITCH_PENALTY 1
+
 /** One match */
 typedef struct _lz4ultra_match {
    unsigned int length;
@@ -388,14 +390,14 @@ static void lz4ultra_find_all_matches(lsza_compressor *pCompressor, const int nS
 }
 
 /**
- * Get the number of extra bytes required to represent a literals length
+ * Get the number of extra bits required to represent a literals length
  *
  * @param nLength literals length
  *
- * @return number of extra bytes required
+ * @return number of extra bits required
  */
 static inline int lz4ultra_get_literals_varlen_size(const int nLength) {
-   return ((nLength - LITERALS_RUN_LEN + 255) / 255);
+   return ((nLength - LITERALS_RUN_LEN + 255) / 255) << 3;
 }
 
 /**
@@ -420,14 +422,14 @@ static inline int lz4ultra_write_literals_varlen(unsigned char *pOutData, int nO
 }
 
 /**
- * Get the number of extra bytes required to represent an encoded match length
+ * Get the number of extra bits required to represent an encoded match length
  *
  * @param nLength encoded match length (actual match length - MIN_MATCH_SIZE)
  *
- * @return number of extra bytes required
+ * @return number of extra bits required
  */
 static inline int lz4ultra_get_match_varlen_size(const int nLength) {
-   return ((nLength - MATCH_RUN_LEN + 255) / 255);
+   return ((nLength - MATCH_RUN_LEN + 255) / 255) << 3;
 }
 
 /**
@@ -463,19 +465,21 @@ static void lz4ultra_optimize_matches(lsza_compressor *pCompressor, const int nS
    int nLastLiteralsOffset;
    int i;
 
-   cost[nEndOffset - 1] = 1;
+   cost[nEndOffset - 1] = 8;
    nLastLiteralsOffset = nEndOffset;
 
    for (i = nEndOffset - 2; i != (nStartOffset - 1); i--) {
       int nBestCost, nBestMatchLen, nBestMatchOffset;
 
       int nLiteralsLen = nLastLiteralsOffset - i;
-      nBestCost = 1 + cost[i + 1];
+      nBestCost = 8 + cost[i + 1];
       if (nLiteralsLen >= LITERALS_RUN_LEN && ((nLiteralsLen - LITERALS_RUN_LEN) % 255) == 0) {
          /* Add to the cost of encoding literals as their number crosses a variable length encoding boundary.
           * The cost automatically accumulates down the chain. */
-         nBestCost++;
+         nBestCost += 8;
       }
+      if (pCompressor->match[(i + 1) << MATCHES_PER_OFFSET_SHIFT].length >= MIN_MATCH_SIZE)
+         nBestCost += MODESWITCH_PENALTY;
       nBestMatchLen = 0;
       nBestMatchOffset = 0;
 
@@ -490,8 +494,10 @@ static void lz4ultra_optimize_matches(lsza_compressor *pCompressor, const int nS
             if ((i + nMatchLen) > (nEndOffset - LAST_LITERALS))
                nMatchLen = nEndOffset - LAST_LITERALS - i;
 
-            nCurCost = 1 + 2 + lz4ultra_get_match_varlen_size(nMatchLen - MIN_MATCH_SIZE);
+            nCurCost = 8 + 16 + lz4ultra_get_match_varlen_size(nMatchLen - MIN_MATCH_SIZE);
             nCurCost += cost[i + nMatchLen];
+            if (pCompressor->match[(i + nMatchLen) << MATCHES_PER_OFFSET_SHIFT].length >= MIN_MATCH_SIZE)
+               nCurCost += MODESWITCH_PENALTY;
 
             if (nBestCost >= nCurCost) {
                nBestCost = nCurCost;
@@ -513,8 +519,10 @@ static void lz4ultra_optimize_matches(lsza_compressor *pCompressor, const int nS
             for (k = MIN_MATCH_SIZE; k < nMatchRunLen; k++) {
                int nCurCost;
 
-               nCurCost = 1 + 2 /* no extra match len bytes */;
+               nCurCost = 8 + 16 /* no extra match len bytes */;
                nCurCost += cost[i + k];
+               if (pCompressor->match[(i + k) << MATCHES_PER_OFFSET_SHIFT].length >= MIN_MATCH_SIZE)
+                  nCurCost += MODESWITCH_PENALTY;
 
                if (nBestCost >= nCurCost) {
                   nBestCost = nCurCost;
@@ -526,8 +534,10 @@ static void lz4ultra_optimize_matches(lsza_compressor *pCompressor, const int nS
             for (; k <= nMatchLen; k++) {
                int nCurCost;
 
-               nCurCost = 1 + 2 + lz4ultra_get_match_varlen_size(k - MIN_MATCH_SIZE);
+               nCurCost = 8 + 16 + lz4ultra_get_match_varlen_size(k - MIN_MATCH_SIZE);
                nCurCost += cost[i + k];
+               if (pCompressor->match[(i + k) << MATCHES_PER_OFFSET_SHIFT].length >= MIN_MATCH_SIZE)
+                  nCurCost += MODESWITCH_PENALTY;
 
                if (nBestCost >= nCurCost) {
                   nBestCost = nCurCost;
@@ -569,10 +579,10 @@ static void lz4ultra_optimize_command_count(lsza_compressor *pCompressor, const 
          if (nMatchLen <= 19 && (i + nMatchLen) < nEndOffset) {
             int nMatchOffset = pMatch->offset;
             int nEncodedMatchLen = nMatchLen - MIN_MATCH_SIZE;
-            int nCommandSize = 1 /* token */ + lz4ultra_get_literals_varlen_size(nNumLiterals) + 2 /* match offset */ + lz4ultra_get_match_varlen_size(nEncodedMatchLen);
+            int nCommandSize = 8 /* token */ + lz4ultra_get_literals_varlen_size(nNumLiterals) + 16 /* match offset */ + lz4ultra_get_match_varlen_size(nEncodedMatchLen);
 
             if (pCompressor->match[(i + nMatchLen) << MATCHES_PER_OFFSET_SHIFT].length >= MIN_MATCH_SIZE) {
-               if (nCommandSize >= (nMatchLen + lz4ultra_get_literals_varlen_size(nNumLiterals + nMatchLen))) {
+               if (nCommandSize >= ((nMatchLen << 3) + lz4ultra_get_literals_varlen_size(nNumLiterals + nMatchLen))) {
                   /* This command is a match; the next command is also a match. The next command currently has no literals; replacing this command by literals will
                    * make the next command eat the cost of encoding the current number of literals, + nMatchLen extra literals. The size of the current match command is
                    * at least as much as the number of literal bytes + the extra cost of encoding them in the next match command, so we can safely replace the current
@@ -589,7 +599,7 @@ static void lz4ultra_optimize_command_count(lsza_compressor *pCompressor, const 
                   nNextNumLiterals++;
                } while (nCurIndex < nEndOffset && pCompressor->match[nCurIndex << MATCHES_PER_OFFSET_SHIFT].length < MIN_MATCH_SIZE);
 
-               if (nCommandSize >= (nMatchLen + lz4ultra_get_literals_varlen_size(nNumLiterals + nNextNumLiterals + nMatchLen) - lz4ultra_get_literals_varlen_size(nNextNumLiterals))) {
+               if (nCommandSize >= ((nMatchLen << 3) + lz4ultra_get_literals_varlen_size(nNumLiterals + nNextNumLiterals + nMatchLen) - lz4ultra_get_literals_varlen_size(nNextNumLiterals))) {
                   /* This command is a match, and is followed by literals, and then another match or the end of the input data. If encoding this match as literals doesn't take
                    * more room than the match, and doesn't grow the next match command's literals encoding, go ahead and remove the command. */
                   nReduce = 1;
@@ -655,9 +665,9 @@ static int lz4ultra_write_block(lsza_compressor *pCompressor, const unsigned cha
          int nEncodedMatchLen = nMatchLen - MIN_MATCH_SIZE;
          int nTokenLiteralsLen = (nNumLiterals >= LITERALS_RUN_LEN) ? LITERALS_RUN_LEN : nNumLiterals;
          int nTokenMatchLen = (nEncodedMatchLen >= MATCH_RUN_LEN) ? MATCH_RUN_LEN : nEncodedMatchLen;
-         int nCommandSize = 1 /* token */ + lz4ultra_get_literals_varlen_size(nNumLiterals) + nNumLiterals + 2 /* match offset */ + lz4ultra_get_match_varlen_size(nEncodedMatchLen);
+         int nCommandSize = 8 /* token */ + lz4ultra_get_literals_varlen_size(nNumLiterals) + (nNumLiterals << 3) + 16 /* match offset */ + lz4ultra_get_match_varlen_size(nEncodedMatchLen);
 
-         if ((nOutOffset + nCommandSize) > nMaxOutDataSize)
+         if ((nOutOffset + (nCommandSize >> 3)) > nMaxOutDataSize)
             return -1;
          if (nMatchOffset < MIN_OFFSET || nMatchOffset > MAX_OFFSET)
             return -1;
@@ -688,9 +698,9 @@ static int lz4ultra_write_block(lsza_compressor *pCompressor, const unsigned cha
 
    {
       int nTokenLiteralsLen = (nNumLiterals >= LITERALS_RUN_LEN) ? LITERALS_RUN_LEN : nNumLiterals;
-      int nCommandSize = 1 /* token */ + lz4ultra_get_literals_varlen_size(nNumLiterals) + nNumLiterals;
+      int nCommandSize = 8 /* token */ + lz4ultra_get_literals_varlen_size(nNumLiterals) + (nNumLiterals << 3);
 
-      if ((nOutOffset + nCommandSize) > nMaxOutDataSize)
+      if ((nOutOffset + (nCommandSize >> 3)) > nMaxOutDataSize)
          return -1;
 
       pOutData[nOutOffset++] = (nTokenLiteralsLen << 4);
