@@ -20,6 +20,16 @@
  * 3. This notice may not be removed or altered from any source distribution.
  */
 
+/*
+ * Uses the libdivsufsort library Copyright (c) 2003-2008 Yuta Mori
+ *
+ * Inspired by LZ4 by Yann Collet. https://github.com/lz4/lz4
+ * With help, ideas, optimizations and speed measurements by spke <zxintrospec@gmail.com>
+ * With ideas from Lizard by Przemyslaw Skibinski and Yann Collet. https://github.com/inikep/lizard
+ * Also with ideas from smallz4 by Stephan Brumme. https://create.stephan-brumme.com/smallz4/
+ *
+ */
+
 /* This code is mostly here to verify the compressor's output. You should use the real, optimized lz4 decompressor to decompress your data. */
 
 #include <stdio.h>
@@ -137,7 +147,7 @@ static inline FORCE_INLINE int lz4ultra_expand_match_slow(const unsigned char **
  *
  * @return size of decompressed data in bytes, or -1 for error
  */
-int lz4ultra_expand_block(const unsigned char *pInBlock, int nBlockSize, unsigned char *pOutData, int nOutDataOffset, int nBlockMaxSize) {
+int lz4ultra_expand_block_lz4(const unsigned char *pInBlock, int nBlockSize, unsigned char *pOutData, int nOutDataOffset, int nBlockMaxSize) {
    const unsigned char *pInBlockEnd = pInBlock + nBlockSize;
    const unsigned char *pInBlockFastEnd = pInBlock + nBlockSize - 16;
    unsigned char *pCurOutData = pOutData + nOutDataOffset;

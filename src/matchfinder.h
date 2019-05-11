@@ -1,5 +1,5 @@
 /*
- * shrink.h - optimal LZ4 block compressor definitions
+ * matchfinder.h - LZ match finder implementation
  *
  * Copyright (C) 2019 Emmanuel Marty
  *
@@ -30,24 +30,41 @@
  *
  */
 
-#ifndef _SHRINK_H
-#define _SHRINK_H
+#ifndef _MATCHFINDER_H
+#define _MATCHFINDER_H
 
 /* Forward declarations */
+typedef struct _lz4ultra_match lz4ultra_match;
 typedef struct _lz4ultra_compressor lz4ultra_compressor;
 
 /**
- * Select the most optimal matches, reduce the token count if possible, and then emit a block of compressed LZ4 data
+ * Parse input data, build suffix array and overlaid data structures to speed up match finding
  *
  * @param pCompressor compression context
  * @param pInWindow pointer to input data window (previously compressed bytes + bytes to compress)
- * @param nPreviousBlockSize number of previously compressed bytes (or 0 for none)
- * @param nInDataSize number of input bytes to compress
- * @param pOutData pointer to output buffer
- * @param nMaxOutDataSize maximum size of output buffer, in bytes
+ * @param nInWindowSize total input size in bytes (previously compressed bytes + bytes to compress)
  *
- * @return size of compressed data in output buffer, or -1 if the data is uncompressible
+ * @return 0 for success, non-zero for failure
  */
-int lz4ultra_optimize_and_write_block_lz4(lz4ultra_compressor *pCompressor, const unsigned char *pInWindow, const int nPreviousBlockSize, const int nInDataSize, unsigned char *pOutData, const int nMaxOutDataSize);
+int lz4ultra_build_suffix_array(lz4ultra_compressor *pCompressor, const unsigned char *pInWindow, const int nInWindowSize);
 
-#endif /* _SHRINK_H */
+/**
+ * Skip previously compressed bytes
+ *
+ * @param pCompressor compression context
+ * @param nStartOffset current offset in input window (typically 0)
+ * @param nEndOffset offset to skip to in input window (typically the number of previously compressed bytes)
+ */
+void lz4ultra_skip_matches(lz4ultra_compressor *pCompressor, const int nStartOffset, const int nEndOffset);
+
+/**
+ * Find all matches for the data to be compressed. Up to NMATCHES_PER_OFFSET matches are stored for each offset, for
+ * the optimizer to look at.
+ *
+ * @param pCompressor compression context
+ * @param nStartOffset current offset in input window (typically the number of previously compressed bytes)
+ * @param nEndOffset offset to end finding matches at (typically the size of the total input window in bytes
+ */
+void lz4ultra_find_all_matches(lz4ultra_compressor *pCompressor, const int nStartOffset, const int nEndOffset);
+
+#endif /* _MATCHFINDER_H */

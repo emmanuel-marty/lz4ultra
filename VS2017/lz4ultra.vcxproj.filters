@@ -51,6 +51,15 @@
     <ClInclude Include="..\src\xxhash\xxhash.h">
       <Filter>Fichiers sources\xxhash</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\matchfinder.h">
+      <Filter>Fichiers sources</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\lib.h">
+      <Filter>Fichiers sources</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\frame.h">
+      <Filter>Fichiers sources</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\libdivsufsort\lib\divsufsort.c">
@@ -76,6 +85,15 @@
     </ClCompile>
     <ClCompile Include="..\src\xxhash\xxhash.c">
       <Filter>Fichiers sources\xxhash</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\matchfinder.c">
+      <Filter>Fichiers sources</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\lib.c">
+      <Filter>Fichiers sources</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\frame.c">
+      <Filter>Fichiers sources</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>
