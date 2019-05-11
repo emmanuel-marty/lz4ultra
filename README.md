@@ -8,8 +8,10 @@ The tool creates optimally compressed files, like lz4 in optimal compression mod
 lz4ultra beats lz4 1.9.1 --12 --favor-decSpeed in both size and the number of tokens produced. With enwik9 (1,000,000,000 bytes):
 
                                       Compr.size    Tokens
+    lz4 1.9.1 --12 (favor ratio)      371,680,440   95,708,169
+    smalLZ4 1.3                       371,680,328   93,172,985
     lz4 1.9.1 --12 --favor-decSpeed   376,408,347   92,105,212
-    lz4ultra 1.1.0                    371,687,509   85,910,002
+    lz4ultra 1.1.0                    371,687,509   85,910,002  <---------
 
 The produced files are meant to be decompressed with the lz4 tool and library. While lz4ultra includes a decompressor, it is mostly meant to verify the output of the compressor and isn't as optimized as Yann Collet's lz4 proper.
 
