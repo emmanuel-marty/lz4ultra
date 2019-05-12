@@ -47,7 +47,7 @@
 #define OPT_VERBOSE 1
 #define OPT_RAW     2
 
-#define TOOL_VERSION "1.1.0"
+#define TOOL_VERSION "1.1.1"
 
 /*---------------------------------------------------------------------------*/
 
@@ -70,9 +70,9 @@ static long long do_get_time() {
 
 /*---------------------------------------------------------------------------*/
 
-static int do_compress(const char *pszInFilename, const char *pszOutFilename, const unsigned int nOptions, int nBlockMaxCode, bool bIndependentBlocks) {
+static int do_compress(const char *pszInFilename, const char *pszOutFilename, const char *pszDictionaryFilename, const unsigned int nOptions, int nBlockMaxCode, bool bIndependentBlocks) {
    FILE *f_in, *f_out;
-   unsigned char *pInData, *pOutData;
+   unsigned char *pInData, *pOutData, *pDictionaryData;
    lz4ultra_compressor compressor;
    long long nStartTime = 0LL, nEndTime = 0LL;
    long long nOriginalSize = 0LL, nCompressedSize = 0LL;
@@ -109,7 +109,7 @@ static int do_compress(const char *pszInFilename, const char *pszOutFilename, co
    do {
       nBlockMaxBits = 8 + (nBlockMaxCode << 1);
       nBlockMaxSize = 1 << nBlockMaxBits;
-      if (nBlockMaxCode > 4 && nBlockMaxSize > nFileSize) {
+      if (nBlockMaxCode > 4 && (nBlockMaxSize >> 1) > nFileSize) {
          nBlockMaxCode--;
       }
       else
@@ -145,12 +145,82 @@ static int do_compress(const char *pszInFilename, const char *pszOutFilename, co
    }
    memset(pInData, 0, nBlockMaxSize);
 
+   int nDictionaryDataSize = 0;
+   pDictionaryData = NULL;
+
+   if (pszDictionaryFilename) {
+      pDictionaryData = (unsigned char *) malloc(HISTORY_SIZE);
+      if (!pDictionaryData) {
+         free(pOutData);
+         pOutData = NULL;
+
+         free(pInData);
+         pInData = NULL;
+
+         fclose(f_out);
+         f_out = NULL;
+
+         fclose(f_in);
+         f_in = NULL;
+
+         fprintf(stderr, "out of memory for dictionary\n");
+         return 100;
+      }
+
+      FILE *f_dictionary = fopen(pszDictionaryFilename, "rb");
+      if (!f_dictionary) {
+         free(pDictionaryData);
+         pDictionaryData = NULL;
+
+         free(pOutData);
+         pOutData = NULL;
+
+         free(pInData);
+         pInData = NULL;
+
+         fclose(f_out);
+         f_out = NULL;
+
+         fclose(f_in);
+         f_in = NULL;
+
+         fprintf(stderr, "error opening dictionary '%s' for reading\n", pszInFilename);
+         return 100;
+      }
+
+      fseek(f_dictionary, 0, SEEK_END);
+#ifdef _WIN32
+      __int64 nDictionaryFileSize = _ftelli64(f_dictionary);
+#else
+      off_t nDictionaryFileSize = ftello(f_dictionary);
+#endif
+      if (nDictionaryFileSize > HISTORY_SIZE) {
+         /* Use the last HISTORY_SIZE bytes of the dictionary */
+         fseek(f_dictionary, -HISTORY_SIZE, SEEK_END);
+      }
+      else {
+         fseek(f_dictionary, 0, SEEK_SET);
+      }
+
+      nDictionaryDataSize = (int)fread(pDictionaryData, 1, HISTORY_SIZE, f_dictionary);
+      if (nDictionaryDataSize < 0)
+         nDictionaryDataSize = 0;
+
+      fclose(f_dictionary);
+      f_dictionary = NULL;
+   }
+
    nFlags = 0;
    if (nOptions & OPT_RAW)
       nFlags |= LZ4ULTRA_FLAG_RAW_BLOCK;
 
    nResult = lz4ultra_compressor_init(&compressor, nBlockMaxSize + HISTORY_SIZE, nFlags);
    if (nResult != 0) {
+      if (pDictionaryData) {
+         free(pDictionaryData);
+         pDictionaryData = NULL;
+      }
+
       free(pOutData);
       pOutData = NULL;
 
@@ -180,21 +250,28 @@ static int do_compress(const char *pszInFilename, const char *pszOutFilename, co
    }
 
    int nPreviousBlockSize = 0;
+   int nNumBlocks = 0;
 
    while (!feof(f_in) && !bError) {
       int nInDataSize;
 
       if (nPreviousBlockSize) {
-         memcpy(pInData, pInData + HISTORY_SIZE + (nBlockMaxSize - HISTORY_SIZE), nPreviousBlockSize);
+         memcpy(pInData + HISTORY_SIZE - nPreviousBlockSize, pInData + HISTORY_SIZE + (nBlockMaxSize - HISTORY_SIZE), nPreviousBlockSize);
+      }
+      else if (nDictionaryDataSize && pDictionaryData) {
+         memcpy(pInData + HISTORY_SIZE - nDictionaryDataSize, pDictionaryData, nDictionaryDataSize);
+         nPreviousBlockSize = nDictionaryDataSize;
       }
 
       nInDataSize = (int)fread(pInData + HISTORY_SIZE, 1, nBlockMaxSize, f_in);
       if (nInDataSize > 0) {
-         if (nPreviousBlockSize && (nOptions & OPT_RAW) != 0) {
+         if ((nOptions & OPT_RAW) != 0 && (nNumBlocks || nInDataSize > 65536)) {
             fprintf(stderr, "error: raw blocks can only be used with files <= 64 Kb\n");
             bError = true;
             break;
          }
+         if (!bIndependentBlocks)
+            nDictionaryDataSize = 0;
 
          int nOutDataSize;
 
@@ -256,6 +333,8 @@ static int do_compress(const char *pszInFilename, const char *pszOutFilename, co
          else {
             nPreviousBlockSize = 0;
          }
+
+         nNumBlocks++;
       }
 
       if (!bError && !feof(f_in) && nOriginalSize >= 1024 * 1024) {
@@ -290,6 +369,11 @@ static int do_compress(const char *pszInFilename, const char *pszOutFilename, co
 
    lz4ultra_compressor_destroy(&compressor);
 
+   if (pDictionaryData) {
+      free(pDictionaryData);
+      pDictionaryData = NULL;
+   }
+
    free(pOutData);
    pOutData = NULL;
 
@@ -313,7 +397,7 @@ static int do_compress(const char *pszInFilename, const char *pszOutFilename, co
 
 /*---------------------------------------------------------------------------*/
 
-static int do_decompress(const char *pszInFilename, const char *pszOutFilename, const unsigned int nOptions) {
+static int do_decompress(const char *pszInFilename, const char *pszOutFilename, const char *pszDictionaryFilename, const unsigned int nOptions) {
    long long nStartTime = 0LL, nEndTime = 0LL;
    long long nOriginalSize = 0LL;
    unsigned int nFileSize = 0;
@@ -372,6 +456,7 @@ static int do_decompress(const char *pszInFilename, const char *pszOutFilename, 
 
    unsigned char *pInBlock;
    unsigned char *pOutData;
+   unsigned char *pDictionaryData;
    int nBlockMaxBits = 8 + (nBlockMaxCode << 1);
    int nBlockMaxSize = 1 << nBlockMaxBits;
 
@@ -400,6 +485,65 @@ static int do_decompress(const char *pszInFilename, const char *pszOutFilename, 
       return 100;
    }
 
+   int nDictionaryDataSize = 0;
+   pDictionaryData = NULL;
+
+   if (pszDictionaryFilename) {
+      pDictionaryData = (unsigned char *)malloc(HISTORY_SIZE);
+      if (!pDictionaryData) {
+         free(pInBlock);
+         pInBlock = NULL;
+
+         fclose(pOutFile);
+         pOutFile = NULL;
+
+         fclose(pInFile);
+         pInFile = NULL;
+
+         fprintf(stderr, "out of memory for dictionary\n");
+         return 100;
+      }
+
+      FILE *f_dictionary = fopen(pszDictionaryFilename, "rb");
+      if (!f_dictionary) {
+         free(pDictionaryData);
+         pDictionaryData = NULL;
+
+         free(pInBlock);
+         pInBlock = NULL;
+
+         fclose(pOutFile);
+         pOutFile = NULL;
+
+         fclose(pInFile);
+         pInFile = NULL;
+
+         fprintf(stderr, "error opening dictionary '%s' for reading\n", pszInFilename);
+         return 100;
+      }
+
+      fseek(f_dictionary, 0, SEEK_END);
+#ifdef _WIN32
+      __int64 nDictionaryFileSize = _ftelli64(f_dictionary);
+#else
+      off_t nDictionaryFileSize = ftello(f_dictionary);
+#endif
+      if (nDictionaryFileSize > HISTORY_SIZE) {
+         /* Use the last HISTORY_SIZE bytes of the dictionary */
+         fseek(f_dictionary, -HISTORY_SIZE, SEEK_END);
+      }
+      else {
+         fseek(f_dictionary, 0, SEEK_SET);
+      }
+
+      nDictionaryDataSize = (int)fread(pDictionaryData, 1, HISTORY_SIZE, f_dictionary);
+      if (nDictionaryDataSize < 0)
+         nDictionaryDataSize = 0;
+
+      fclose(f_dictionary);
+      f_dictionary = NULL;
+   }
+
    if (nOptions & OPT_VERBOSE) {
       nStartTime = do_get_time();
    }
@@ -413,6 +557,13 @@ static int do_decompress(const char *pszInFilename, const char *pszOutFilename, 
 
       if (nPrevDecompressedSize != 0) {
          memcpy(pOutData + HISTORY_SIZE - nPrevDecompressedSize, pOutData + HISTORY_SIZE + (nBlockMaxSize - HISTORY_SIZE), nPrevDecompressedSize);
+      }
+      else if (nDictionaryDataSize != 0) {
+         memcpy(pOutData + HISTORY_SIZE - nDictionaryDataSize, pDictionaryData, nDictionaryDataSize);
+         nPrevDecompressedSize = nDictionaryDataSize;
+
+         if (!bIndependentBlocks)
+            nDictionaryDataSize = 0;
       }
 
       if ((nOptions & OPT_RAW) == 0) {
@@ -480,6 +631,11 @@ static int do_decompress(const char *pszInFilename, const char *pszOutFilename, 
       }
    }
 
+   if (pDictionaryData) {
+      free(pDictionaryData);
+      pDictionaryData = NULL;
+   }
+
    free(pOutData);
    pOutData = NULL;
 
@@ -511,7 +667,7 @@ static int do_decompress(const char *pszInFilename, const char *pszOutFilename, 
 
 /*---------------------------------------------------------------------------*/
 
-static int do_compare(const char *pszInFilename, const char *pszOutFilename, const unsigned int nOptions) {
+static int do_compare(const char *pszInFilename, const char *pszOutFilename, const char *pszDictionaryFilename, const unsigned int nOptions) {
    long long nStartTime = 0LL, nEndTime = 0LL;
    long long nOriginalSize = 0LL;
    long long nKnownGoodSize = 0LL;
@@ -570,6 +726,7 @@ static int do_compare(const char *pszInFilename, const char *pszOutFilename, con
 
    unsigned char *pInBlock;
    unsigned char *pOutData;
+   unsigned char *pDictionaryData;
    unsigned char *pCompareData;
    int nBlockMaxBits = 8 + (nBlockMaxCode << 1);
    int nBlockMaxSize = 1 << nBlockMaxBits;
@@ -599,8 +756,72 @@ static int do_compare(const char *pszInFilename, const char *pszOutFilename, con
       return 100;
    }
 
+   int nDictionaryDataSize = 0;
+   pDictionaryData = NULL;
+
+   if (pszDictionaryFilename) {
+      pDictionaryData = (unsigned char *)malloc(HISTORY_SIZE);
+      if (!pDictionaryData) {
+         free(pInBlock);
+         pInBlock = NULL;
+
+         fclose(pOutFile);
+         pOutFile = NULL;
+
+         fclose(pInFile);
+         pInFile = NULL;
+
+         fprintf(stderr, "out of memory for dictionary\n");
+         return 100;
+      }
+
+      FILE *f_dictionary = fopen(pszDictionaryFilename, "rb");
+      if (!f_dictionary) {
+         free(pDictionaryData);
+         pDictionaryData = NULL;
+
+         free(pInBlock);
+         pInBlock = NULL;
+
+         fclose(pOutFile);
+         pOutFile = NULL;
+
+         fclose(pInFile);
+         pInFile = NULL;
+
+         fprintf(stderr, "error opening dictionary '%s' for reading\n", pszInFilename);
+         return 100;
+      }
+
+      fseek(f_dictionary, 0, SEEK_END);
+#ifdef _WIN32
+      __int64 nDictionaryFileSize = _ftelli64(f_dictionary);
+#else
+      off_t nDictionaryFileSize = ftello(f_dictionary);
+#endif
+      if (nDictionaryFileSize > HISTORY_SIZE) {
+         /* Use the last HISTORY_SIZE bytes of the dictionary */
+         fseek(f_dictionary, -HISTORY_SIZE, SEEK_END);
+      }
+      else {
+         fseek(f_dictionary, 0, SEEK_SET);
+      }
+
+      nDictionaryDataSize = (int)fread(pDictionaryData, 1, HISTORY_SIZE, f_dictionary);
+      if (nDictionaryDataSize < 0)
+         nDictionaryDataSize = 0;
+
+      fclose(f_dictionary);
+      f_dictionary = NULL;
+   }
+
    pCompareData = (unsigned char*)malloc(nBlockMaxSize);
    if (!pCompareData) {
+      if (pDictionaryData) {
+         free(pDictionaryData);
+         pDictionaryData = NULL;
+      }
+
       free(pOutData);
       pOutData = NULL;
 
@@ -630,6 +851,13 @@ static int do_compare(const char *pszInFilename, const char *pszOutFilename, con
 
       if (nPrevDecompressedSize != 0) {
          memcpy(pOutData + HISTORY_SIZE - nPrevDecompressedSize, pOutData + HISTORY_SIZE + (nBlockMaxSize - HISTORY_SIZE), nPrevDecompressedSize);
+      }
+      else if (nDictionaryDataSize != 0) {
+         memcpy(pOutData + HISTORY_SIZE - nDictionaryDataSize, pDictionaryData, nDictionaryDataSize);
+         nPrevDecompressedSize = nDictionaryDataSize;
+
+         if (!bIndependentBlocks)
+            nDictionaryDataSize = 0;
       }
 
       int nBytesToCompare = (int)fread(pCompareData, 1, nBlockMaxSize, pOutFile);
@@ -706,6 +934,11 @@ static int do_compare(const char *pszInFilename, const char *pszOutFilename, con
       }
    }
 
+   if (pDictionaryData) {
+      free(pDictionaryData);
+      pDictionaryData = NULL;
+   }
+
    free(pCompareData);
    pCompareData = NULL;
 
@@ -748,6 +981,7 @@ int main(int argc, char **argv) {
    int i;
    const char *pszInFilename = NULL;
    const char *pszOutFilename = NULL;
+   const char *pszDictionaryFilename = NULL;
    bool bArgsError = false;
    bool bCommandDefined = false;
    bool bVerifyCompression = false;
@@ -778,6 +1012,21 @@ int main(int argc, char **argv) {
       else if (!strcmp(argv[i], "-c")) {
          if (!bVerifyCompression) {
             bVerifyCompression = true;
+         }
+         else
+            bArgsError = true;
+      }
+      else if (!strcmp(argv[i], "-D")) {
+         if (!pszDictionaryFilename && (i + 1) < argc) {
+            pszDictionaryFilename = argv[i + 1];
+            i++;
+         }
+         else
+            bArgsError = true;
+      }
+      else if (!strncmp(argv[i], "-D", 2)) {
+         if (!pszDictionaryFilename) {
+            pszDictionaryFilename = argv[i] + 2;
          }
          else
             bArgsError = true;
@@ -843,17 +1092,18 @@ int main(int argc, char **argv) {
       fprintf(stderr, "      -BI: use block-independent compression\n");
       fprintf(stderr, "       -v: be verbose\n");
       fprintf(stderr, "       -r: raw block format (max. 64 Kb files)\n");
+      fprintf(stderr, "       -D <filename>: use dictionary file\n");
       return 100;
    }
 
    if (cCommand == 'z') {
-      int nResult = do_compress(pszInFilename, pszOutFilename, nOptions, nBlockMaxCode, bIndependentBlocks);
+      int nResult = do_compress(pszInFilename, pszOutFilename, pszDictionaryFilename, nOptions, nBlockMaxCode, bIndependentBlocks);
       if (nResult == 0 && bVerifyCompression) {
-         nResult = do_compare(pszOutFilename, pszInFilename, nOptions);
+         nResult = do_compare(pszOutFilename, pszInFilename, pszDictionaryFilename, nOptions);
       }
    }
    else if (cCommand == 'd') {
-      return do_decompress(pszInFilename, pszOutFilename, nOptions);
+      return do_decompress(pszInFilename, pszOutFilename, pszDictionaryFilename, nOptions);
    }
    else {
       return 100;
