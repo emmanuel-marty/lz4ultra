@@ -186,6 +186,7 @@
     <ClInclude Include="..\src\libdivsufsort\include\divsufsort_private.h" />
     <ClInclude Include="..\src\matchfinder.h" />
     <ClInclude Include="..\src\shrink.h" />
+    <ClInclude Include="..\src\stream.h" />
     <ClInclude Include="..\src\xxhash\xxhash.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>
@@ -200,6 +201,7 @@
     <ClCompile Include="..\src\lz4ultra.c" />
     <ClCompile Include="..\src\matchfinder.c" />
     <ClCompile Include="..\src\shrink.c" />
+    <ClCompile Include="..\src\stream.c" />
     <ClCompile Include="..\src\xxhash\xxhash.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

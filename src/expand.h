@@ -44,6 +44,6 @@
  *
  * @return size of decompressed data in bytes, or -1 for error
  */
-int lz4ultra_expand_block_lz4(const unsigned char *pInBlock, int nBlockSize, unsigned char *pOutData, int nOutDataOffset, int nBlockMaxSize);
+int lz4ultra_decompressor_expand_block_lz4(const unsigned char *pInBlock, int nBlockSize, unsigned char *pOutData, int nOutDataOffset, int nBlockMaxSize);
 
 #endif /* _EXPAND_H */

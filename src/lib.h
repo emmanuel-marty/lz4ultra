@@ -34,9 +34,129 @@
 #define _LIB_H
 
 #include "divsufsort.h"
+#include "stream.h"
+
+/** High level status for compression and decompression */
+typedef enum {
+   LZ4ULTRA_OK = 0,                          /**< Success */
+   LZ4ULTRA_ERROR_SRC,                       /**< Error reading input */
+   LZ4ULTRA_ERROR_DST,                       /**< Error reading output */
+   LZ4ULTRA_ERROR_DICTIONARY,                /**< Error reading dictionary */
+   LZ4ULTRA_ERROR_MEMORY,                    /**< Out of memory */
+
+   /* Compression-specific status codes */
+   LZ4ULTRA_ERROR_COMPRESSION,               /**< Internal compression error */
+   LZ4ULTRA_ERROR_RAW_TOOLARGE,              /**< Input is too large to be compressed to a raw block */
+   LZ4ULTRA_ERROR_RAW_UNCOMPRESSED,          /**< Input is incompressible and raw blocks don't support uncompressed data */
+
+   /* Decompression-specific status codes */
+   LZ4ULTRA_ERROR_FORMAT,                    /**< Invalid input format or magic number when decompressing */
+   LZ4ULTRA_ERROR_CHECKSUM,                  /**< Invalid checksum when decompressing */
+   LZ4ULTRA_ERROR_DECOMPRESSION,             /**< Internal decompression error */
+} lz4ultra_status_t;
 
 /* Compression flags */
 #define LZ4ULTRA_FLAG_RAW_BLOCK      (1<<1)           /**< 1 to emit raw block */
+
+/*-------------- Top level API -------------- */
+
+/**
+ * Compress file
+ *
+ * @param pszInFilename name of input(source) file to compress
+ * @param pszOutFilename name of output(compressed) file to generate
+ * @param pszDictionaryFilename name of dictionary file, or NULL for none
+ * @param nFlags compression flags (LZ4ULTRA_FLAG_xxx)
+ * @param nBlockMaxCode maximum block size code (4..7 for 64 Kb..4 Mb)
+ * @param nIsIndependentBlocks nonzero to compress using independent blocks, 0 to compress with inter-block back references
+ * @param start start function, called when the max block size is finalized and compression is about to start, or NULL for none
+ * @param progress progress function, called after compressing each block, or NULL for none
+ * @param pOriginalSize pointer to returned input(source) size, updated when this function is successful
+ * @param pCompressedSize pointer to returned output(compressed) size, updated when this function is successful
+ * @param pCommandCount pointer to returned token(compression commands) count, updated when this function is successful
+ *
+ * @return LZ4ULTRA_OK for success, or an error value from lz4ultra_status_t
+ */
+lz4ultra_status_t lz4ultra_compress_file(const char *pszInFilename, const char *pszOutFilename, const char *pszDictionaryFilename, const unsigned int nFlags,
+   int nBlockMaxCode, int nIsIndependentBlocks,
+   void(*start)(int nBlockMaxCode, int nIsIndependentBlocks),
+   void(*progress)(long long nOriginalSize, long long nCompressedSize), long long *pOriginalSize, long long *pCompressedSize, int *pCommandCount);
+
+/**
+ * Decompress file
+ *
+ * @param pszInFilename name of input(compressed) file to decompress
+ * @param pszOutFilename name of output(decompressed) file to generate
+ * @param pszDictionaryFilename name of dictionary file, or NULL for none
+ * @param nFlags compression flags (LZ4ULTRA_FLAG_RAW_BLOCK to decompress a raw block, or 0)
+ * @param pOriginalSize pointer to returned output(decompressed) size, updated when this function is successful
+ * @param pCompressedSize pointer to returned input(compressed) size, updated when this function is successful
+ *
+ * @return LZ4ULTRA_OK for success, or an error value from lz4ultra_status_t
+ */
+lz4ultra_status_t lz4ultra_decompress_file(const char *pszInFilename, const char *pszOutFilename, const char *pszDictionaryFilename, const unsigned int nFlags,
+   long long *pOriginalSize, long long *pCompressedSize);
+
+/*-------------- Streaming API -------------- */
+
+/**
+ * Load dictionary contents
+ *
+ * @param pszDictionaryFilename name of dictionary file, or NULL for none
+ * @param pDictionaryData pointer to returned dictionary contents, or NULL for none
+ * @param nDictionaryDataSize pointer to returned size of dictionary contents, or 0
+ *
+ * @return LZSA_OK for success, or an error value from lz4ultra_status_t
+ */
+int lz4ultra_dictionary_load(const char *pszDictionaryFilename, void **ppDictionaryData, int *pDictionaryDataSize);
+
+/**
+ * Free dictionary contents
+ *
+ * @param pDictionaryData pointer to pointer to dictionary contents
+ */
+void lz4ultra_dictionary_free(void **ppDictionaryData);
+
+/**
+ * Compress stream
+ *
+ * @param pInStream input(source) stream to compress
+ * @param pOutStream output(compressed) stream to write to
+ * @param pDictionaryData dictionary contents, or NULL for none
+ * @param nDictionaryDataSize size of dictionary contents, or 0
+ * @param nFlags compression flags (LZ4ULTRA_FLAG_xxx)
+ * @param nBlockMaxCode maximum block size code (4..7 for 64 Kb..4 Mb)
+ * @param nIsIndependentBlocks nonzero to compress using independent blocks, 0 to compress with inter-block back references
+ * @param start start function, called when the max block size is finalized and compression is about to start, or NULL for none
+ * @param progress progress function, called after compressing each block, or NULL for none
+ * @param pOriginalSize pointer to returned input(source) size, updated when this function is successful
+ * @param pCompressedSize pointer to returned output(compressed) size, updated when this function is successful
+ * @param pCommandCount pointer to returned token(compression commands) count, updated when this function is successful
+ *
+ * @return LZ4ULTRA_OK for success, or an error value from lz4ultra_status_t
+ */
+lz4ultra_status_t lz4ultra_compress_stream(lz4ultra_stream_t *pInStream, lz4ultra_stream_t *pOutStream, const void *pDictionaryData, int nDictionaryDataSize, const unsigned int nFlags,
+   int nBlockMaxCode, int nIsIndependentBlocks,
+   void(*start)(int nBlockMaxCode, int nIsIndependentBlocks),
+   void(*progress)(long long nOriginalSize, long long nCompressedSize), long long *pOriginalSize, long long *pCompressedSize, int *pCommandCount);
+
+/**
+ * Decompress stream
+ *
+ * @param pInStream input(compressed) stream to decompress
+ * @param pOutStream output(decompressed) stream to write to
+ * @param pDictionaryData dictionary contents, or NULL for none
+ * @param nDictionaryDataSize size of dictionary contents, or 0
+ * @param nFlags compression flags (LZ4ULTRA_FLAG_RAW_BLOCK to decompress a raw block, or 0)
+ * @param pOriginalSize pointer to returned output(decompressed) size, updated when this function is successful
+ * @param pCompressedSize pointer to returned input(compressed) size, updated when this function is successful
+ *
+ * @return LZ4ULTRA_OK for success, or an error value from lz4ultra_status_t
+ */
+lz4ultra_status_t lz4ultra_decompress_stream(lz4ultra_stream_t *pInStream, lz4ultra_stream_t *pOutStream, const void *pDictionaryData, int nDictionaryDataSize, const unsigned int nFlags,
+   long long *pOriginalSize, long long *pCompressedSize);
+
+/*-------------- Block compression API --------------*/
 
 #define LCP_BITS 15
 #define LCP_MAX (1LL<<(LCP_BITS - 1))
@@ -101,7 +221,7 @@ void lz4ultra_compressor_destroy(lz4ultra_compressor *pCompressor);
  *
  * @return size of compressed data in output buffer, or -1 if the data is uncompressible
  */
-int lz4ultra_shrink_block(lz4ultra_compressor *pCompressor, const unsigned char *pInWindow, const int nPreviousBlockSize, const int nInDataSize, unsigned char *pOutData, const int nMaxOutDataSize);
+int lz4ultra_compressor_shrink_block(lz4ultra_compressor *pCompressor, const unsigned char *pInWindow, const int nPreviousBlockSize, const int nInDataSize, unsigned char *pOutData, const int nMaxOutDataSize);
 
 /**
  * Get the number of compression commands issued in compressed data blocks
@@ -121,6 +241,6 @@ int lz4ultra_compressor_get_command_count(lz4ultra_compressor *pCompressor);
  *
  * @return size of decompressed data in bytes, or -1 for error
  */
-int lz4ultra_expand_block(const unsigned char *pInBlock, int nBlockSize, unsigned char *pOutData, int nOutDataOffset, int nBlockMaxSize);
+int lz4ultra_decompressor_expand_block(const unsigned char *pInBlock, int nBlockSize, unsigned char *pOutData, int nOutDataOffset, int nBlockMaxSize);
 
 #endif /* _LIB_H */

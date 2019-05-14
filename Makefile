@@ -11,8 +11,9 @@ $(OBJDIR)/%.o: src/../%.c
 APP := lz4ultra
 
 OBJS := $(OBJDIR)/src/lz4ultra.o
-OBJS += $(OBJDIR)/src/frame.o
 OBJS += $(OBJDIR)/src/lib.o
+OBJS += $(OBJDIR)/src/stream.o
+OBJS += $(OBJDIR)/src/frame.o
 OBJS += $(OBJDIR)/src/matchfinder.o
 OBJS += $(OBJDIR)/src/shrink.o
 OBJS += $(OBJDIR)/src/expand.o
