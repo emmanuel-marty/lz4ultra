@@ -7,7 +7,7 @@ The tool creates optimally compressed files, like lz4 in optimal compression mod
 
 lz4ultra beats lz4 1.9.1 --12 --favor-decSpeed in both size and decompression speed. With enwik9 (1,000,000,000 bytes):
 
-                                      Compr.size    Tokens      Decomp.time (ms)
+                                      Compr.size    Tokens      Decomp.time (μs, Core i7-6700)
     lz4 1.9.1 --12 (favor ratio)      371,680,440   95,708,169  345,272
     smalLZ4 1.3                       371,680,328   93,172,985  343,571
     lz4ultra 1.1.3 (favor ratio)      371,687,509   85,910,002  342,159
