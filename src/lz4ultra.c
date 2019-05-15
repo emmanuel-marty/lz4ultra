@@ -41,10 +41,11 @@
 #endif
 #include "lib.h"
 
-#define OPT_VERBOSE 1
-#define OPT_RAW     2
+#define OPT_VERBOSE        1
+#define OPT_FAVOR_RATIO    2
+#define OPT_RAW            4
 
-#define TOOL_VERSION "1.1.2"
+#define TOOL_VERSION "1.1.3"
 
 /*---------------------------------------------------------------------------*/
 
@@ -87,6 +88,8 @@ static int do_compress(const char *pszInFilename, const char *pszOutFilename, co
    int nFlags;
 
    nFlags = 0;
+   if (nOptions & OPT_FAVOR_RATIO)
+      nFlags |= LZ4ULTRA_FLAG_FAVOR_RATIO;
    if (nOptions & OPT_RAW)
       nFlags |= LZ4ULTRA_FLAG_RAW_BLOCK;
 
@@ -336,7 +339,7 @@ int main(int argc, char **argv) {
    int nIsIndependentBlocks = 0;
    bool bBlockDependenceDefined = false;
    char cCommand = 'z';
-   unsigned int nOptions = 0;
+   unsigned int nOptions = OPT_FAVOR_RATIO;
 
    for (i = 1; i < argc; i++) {
       if (!strcmp(argv[i], "-d")) {
@@ -416,6 +419,13 @@ int main(int argc, char **argv) {
          else
             bArgsError = true;
       }
+      else if (!strcmp(argv[i], "--favor-decSpeed")) {
+         if ((nOptions & OPT_FAVOR_RATIO) != 0) {
+            nOptions &= (~OPT_FAVOR_RATIO);
+         }
+         else
+            bArgsError = true;
+      }
       else {
          if (!pszInFilename)
             pszInFilename = argv[i];
@@ -431,14 +441,15 @@ int main(int argc, char **argv) {
    if (bArgsError || !pszInFilename || !pszOutFilename) {
       fprintf(stderr, "lz4ultra v" TOOL_VERSION " by Emmanuel Marty and spke\n");
       fprintf(stderr, "usage: %s [-c] [-d] [-v] [-r] <infile> <outfile>\n", argv[0]);
-      fprintf(stderr, "       -c: check resulting stream after compressing\n");
-      fprintf(stderr, "       -d: decompress (default: compress)\n");
-      fprintf(stderr, "   -B4..7: compress with 64, 256, 1024 or 4096 Kb blocks (defaults to -B7)\n");
-      fprintf(stderr, "      -BD: use block-dependent compression (default)\n");
-      fprintf(stderr, "      -BI: use block-independent compression\n");
-      fprintf(stderr, "       -v: be verbose\n");
-      fprintf(stderr, "       -r: raw block format (max. 64 Kb files)\n");
-      fprintf(stderr, "       -D <filename>: use dictionary file\n");
+      fprintf(stderr, "              -c: check resulting stream after compressing\n");
+      fprintf(stderr, "              -d: decompress (default: compress)\n");
+      fprintf(stderr, "          -B4..7: compress with 64, 256, 1024 or 4096 Kb blocks (defaults to -B7)\n");
+      fprintf(stderr, "             -BD: use block-dependent compression (default)\n");
+      fprintf(stderr, "             -BI: use block-independent compression\n");
+      fprintf(stderr, "              -v: be verbose\n");
+      fprintf(stderr, "              -r: raw block format (max. 64 Kb files)\n");
+      fprintf(stderr, "--favor-decSpeed: trade some ratio for faster decompression\n");
+      fprintf(stderr, "   -D <filename>: use dictionary file\n");
       return 100;
    }
 

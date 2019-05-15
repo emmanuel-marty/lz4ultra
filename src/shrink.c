@@ -160,6 +160,13 @@ static void lz4ultra_optimize_matches_lz4(lz4ultra_compressor *pCompressor, cons
             if ((i + nMatchLen) > (nEndOffset - LAST_LITERALS))
                nMatchLen = nEndOffset - LAST_LITERALS - i;
 
+            if ((pCompressor->flags & LZ4ULTRA_FLAG_FAVOR_RATIO) == 0) {
+               /* If the match is just above the size where it would use the fast decompression path, shorten it so it does use it,
+                * giving up some ratio for extra decompression speed */
+               if (nMatchLen > (MATCH_RUN_LEN + MIN_MATCH_SIZE - 1) && nMatchLen <= (2 * (MATCH_RUN_LEN + MIN_MATCH_SIZE - 1)))
+                  nMatchLen = MATCH_RUN_LEN + MIN_MATCH_SIZE - 1;
+            }
+
             nMatchRunLen = nMatchLen;
             if (nMatchRunLen > MATCH_RUN_LEN)
                nMatchRunLen = MATCH_RUN_LEN;

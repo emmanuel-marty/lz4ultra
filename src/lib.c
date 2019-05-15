@@ -155,7 +155,6 @@ int lz4ultra_dictionary_load(const char *pszDictionaryFilename, void **ppDiction
    unsigned char *pDictionaryData = NULL;
    int nDictionaryDataSize = 0;
 
-
    if (pszDictionaryFilename) {
       pDictionaryData = (unsigned char *)malloc(HISTORY_SIZE);
       if (!pDictionaryData) {

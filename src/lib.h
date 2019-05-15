@@ -56,6 +56,7 @@ typedef enum {
 } lz4ultra_status_t;
 
 /* Compression flags */
+#define LZ4ULTRA_FLAG_FAVOR_RATIO    (1<<0)           /**< 1 to compress with the best ratio, 0 to trade some compression ratio for extra decompression speed */
 #define LZ4ULTRA_FLAG_RAW_BLOCK      (1<<1)           /**< 1 to emit raw block */
 
 /*-------------- Top level API -------------- */
