@@ -129,7 +129,7 @@ static int do_compress(const char *pszInFilename, const char *pszOutFilename, co
    case LZ4ULTRA_ERROR_DICTIONARY: fprintf(stderr, "error reading dictionary '%s'\n", pszDictionaryFilename); break;
    case LZ4ULTRA_ERROR_MEMORY: fprintf(stderr, "out of memory\n"); break;
    case LZ4ULTRA_ERROR_COMPRESSION: fprintf(stderr, "internal compression error\n"); break;
-   case LZ4ULTRA_ERROR_RAW_TOOLARGE: fprintf(stderr, "error: raw blocks can only be used with files <= 64 Kb\n"); break;
+   case LZ4ULTRA_ERROR_RAW_TOOLARGE: fprintf(stderr, "error: raw blocks can only be used with files <= 4 Mb\n"); break;
    case LZ4ULTRA_ERROR_RAW_UNCOMPRESSED: fprintf(stderr, "error: data is incompressible, raw blocks only support compressed data\n"); break;
    case LZ4ULTRA_OK: break;
    default: fprintf(stderr, "unknown compression error %d\n", nStatus); break;
@@ -390,7 +390,10 @@ static int do_benchmark(const char *pszInFilename, const char *pszOutFilename, c
 
    /* Allocate max decompressed size */
 
-   nMaxDecompressedSize = lz4ultra_inmem_get_max_decompressed_size(pFileData, nFileSize);
+   if (nOptions & OPT_RAW)
+      nMaxDecompressedSize = 0x400000;
+   else
+      nMaxDecompressedSize = lz4ultra_inmem_get_max_decompressed_size(pFileData, nFileSize);
    if (nMaxDecompressedSize == -1) {
       free(pFileData);
       fprintf(stderr, "invalid compressed format for file '%s'\n", pszInFilename);
@@ -411,7 +414,10 @@ static int do_benchmark(const char *pszInFilename, const char *pszOutFilename, c
    size_t nActualDecompressedSize = 0;
    for (i = 0; i < 50; i++) {
       long long t0 = do_get_time();
-      nActualDecompressedSize = lz4ultra_inmem_decompress_stream(pFileData, pDecompressedData, nFileSize, nMaxDecompressedSize);
+      if (nOptions & OPT_RAW)
+         nActualDecompressedSize = lz4ultra_decompressor_expand_block(pFileData, (int)nFileSize - 2 /* EOD marker */, pDecompressedData, 0, (int)nMaxDecompressedSize);
+      else
+         nActualDecompressedSize = lz4ultra_inmem_decompress_stream(pFileData, pDecompressedData, nFileSize, nMaxDecompressedSize);
       long long t1 = do_get_time();
       if (nActualDecompressedSize == -1) {
          free(pDecompressedData);
@@ -578,7 +584,7 @@ int main(int argc, char **argv) {
       fprintf(stderr, "             -BD: use block-dependent compression (default)\n");
       fprintf(stderr, "             -BI: use block-independent compression\n");
       fprintf(stderr, "              -v: be verbose\n");
-      fprintf(stderr, "              -r: raw block format (max. 64 Kb files)\n");
+      fprintf(stderr, "              -r: raw block format (max. 4 Mb files)\n");
       fprintf(stderr, "--favor-decSpeed: trade some ratio for faster decompression\n");
       fprintf(stderr, "   -D <filename>: use dictionary file\n");
       return 100;
