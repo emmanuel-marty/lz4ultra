@@ -177,6 +177,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="..\src\inmem.h" />
     <ClInclude Include="..\src\expand.h" />
     <ClInclude Include="..\src\format.h" />
     <ClInclude Include="..\src\frame.h" />
@@ -191,6 +192,7 @@
     <ClInclude Include="pch.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\src\inmem.c" />
     <ClCompile Include="..\src\expand.c" />
     <ClCompile Include="..\src\frame.c" />
     <ClCompile Include="..\src\lib.c" />
