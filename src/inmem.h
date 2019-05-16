@@ -1,5 +1,5 @@
 /*
- * inmem.h - in-memory decompression for benchmark
+ * inmem.h - in-memory decompression for benchmarks
  *
  * Copyright (C) 2019 Emmanuel Marty
  *
@@ -30,8 +30,8 @@
  *
  */
 
-#ifndef _BENCHMARK_H
-#define _BENCHMARK_H
+#ifndef _INMEM_H
+#define _INMEM_H
 
 #include <stdio.h>
 
@@ -57,4 +57,4 @@ size_t lz4ultra_inmem_get_max_decompressed_size(const unsigned char *pFileData, 
  */
 size_t lz4ultra_inmem_decompress_stream(const unsigned char *pFileData, unsigned char *pOutBuffer, size_t nFileSize, size_t nMaxOutBufferSize);
 
-#endif /* _BENCHMARK_H */
+#endif /* _INMEM_H */

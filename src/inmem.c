@@ -20,15 +20,15 @@
  * 3. This notice may not be removed or altered from any source distribution.
  */
 
- /*
-  * Uses the libdivsufsort library Copyright (c) 2003-2008 Yuta Mori
-  *
-  * Inspired by LZ4 by Yann Collet. https://github.com/lz4/lz4
-  * With help, ideas, optimizations and speed measurements by spke <zxintrospec@gmail.com>
-  * With ideas from Lizard by Przemyslaw Skibinski and Yann Collet. https://github.com/inikep/lizard
-  * Also with ideas from smallz4 by Stephan Brumme. https://create.stephan-brumme.com/smallz4/
-  *
-  */
+/*
+ * Uses the libdivsufsort library Copyright (c) 2003-2008 Yuta Mori
+ *
+ * Inspired by LZ4 by Yann Collet. https://github.com/lz4/lz4
+ * With help, ideas, optimizations and speed measurements by spke <zxintrospec@gmail.com>
+ * With ideas from Lizard by Przemyslaw Skibinski and Yann Collet. https://github.com/inikep/lizard
+ * Also with ideas from smallz4 by Stephan Brumme. https://create.stephan-brumme.com/smallz4/
+ *
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -104,7 +104,6 @@ size_t lz4ultra_inmem_decompress_stream(const unsigned char *pFileData, unsigned
    const unsigned char *pEndOutBuffer = pCurOutBuffer + nMaxOutBufferSize;
    int nBlockMaxCode = 0, nIsIndependentBlocks = 0;
    int nBlockMaxBits, nBlockMaxSize, nPreviousBlockSize;
-   size_t nMaxDecompressedSize = 0;
 
    /* Check header */
    if ((pCurFileData + LZ4ULTRA_HEADER_SIZE) > pEndFileData ||
@@ -129,8 +128,6 @@ size_t lz4ultra_inmem_decompress_stream(const unsigned char *pFileData, unsigned
 
       if (!nBlockDataSize)
          break;
-
-      nMaxDecompressedSize += nBlockMaxSize;
 
       if (!nIsUncompressed) {
          int nDecompressedSize;
