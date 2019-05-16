@@ -38,102 +38,21 @@
 #include "format.h"
 #include "expand.h"
 
-#ifdef _MSC_VER
-#define FORCE_INLINE __forceinline
-#else /* _MSC_VER */
-#define FORCE_INLINE __attribute__((always_inline))
-#endif /* _MSC_VER */
+#if defined(__GNUC__) || defined(__clang__)
+#define likely(x)       __builtin_expect(!!(x), 1)
+#define unlikely(x)     __builtin_expect(!!(x), 0)
+#else
+#define likely(x)       (x)
+#define unlikely(x)     (x)
+#endif
 
-static inline FORCE_INLINE int lz4ultra_expand_literals_slow(const unsigned char **ppInBlock, const unsigned char *pInBlockEnd, unsigned int nLiterals, unsigned char **ppCurOutData, const unsigned char *pOutDataEnd) {
-   const unsigned char *pInBlock = *ppInBlock;
-   unsigned char *pCurOutData = *ppCurOutData;
-
-   if (nLiterals == LITERALS_RUN_LEN) {
-      unsigned char nByte;
-
-      do {
-         if (pInBlock < pInBlockEnd) {
-            nByte = *pInBlock++;
-            nLiterals += ((unsigned int)nByte);
-         }
-         else {
-            break;
-         }
-      } while (nByte == 255);
-   }
-
-   if (nLiterals != 0) {
-      if ((pInBlock + nLiterals) <= pInBlockEnd &&
-         (pCurOutData + nLiterals) <= pOutDataEnd) {
-         memcpy(pCurOutData, pInBlock, nLiterals);
-         pInBlock += nLiterals;
-         pCurOutData += nLiterals;
-      }
-      else {
-         return -1;
-      }
-   }
-
-   *ppInBlock = pInBlock;
-   *ppCurOutData = pCurOutData;
-   return 0;
-}
-
-static inline FORCE_INLINE int lz4ultra_expand_match_slow(const unsigned char **ppInBlock, const unsigned char *pInBlockEnd, const unsigned char *pSrc, unsigned int nMatchLen, unsigned char **ppCurOutData, const unsigned char *pOutDataEnd, const unsigned char *pOutDataFastEnd) {
-   const unsigned char *pInBlock = *ppInBlock;
-   unsigned char *pCurOutData = *ppCurOutData;
-
-   if (nMatchLen == MATCH_RUN_LEN) {
-      unsigned char nByte;
-
-      do {
-         if (pInBlock < pInBlockEnd) {
-            nByte = *pInBlock++;
-            nMatchLen += ((unsigned int)nByte);
-         }
-         else {
-            break;
-         }
-      } while (nByte == 255);
-   }
-
-   nMatchLen += MIN_MATCH_SIZE;
-
-   if ((pCurOutData + nMatchLen) <= pOutDataEnd) {
-      if ((pCurOutData - pSrc) >= 8 && (pCurOutData + nMatchLen) <= pOutDataFastEnd) {
-         const unsigned char *pCopySrc = pSrc;
-         unsigned char *pCopyDst = pCurOutData;
-         const unsigned char *pCopyEndDst = pCurOutData + nMatchLen;
-
-         do {
-            memcpy(pCopyDst, pCopySrc, 8);
-            memcpy(pCopyDst + 8, pCopySrc + 8, 8);
-            pCopySrc += 16;
-            pCopyDst += 16;
-         } while (pCopyDst < pCopyEndDst);
-
-         pCurOutData += nMatchLen;
-      }
-      else {
-         while (nMatchLen >= 4) {
-            *pCurOutData++ = *pSrc++;
-            *pCurOutData++ = *pSrc++;
-            *pCurOutData++ = *pSrc++;
-            *pCurOutData++ = *pSrc++;
-            nMatchLen -= 4;
-         }
-         while (nMatchLen--) {
-            *pCurOutData++ = *pSrc++;
-         }
-      }
-   }
-   else {
-      return -1;
-   }
-
-   *ppInBlock = pInBlock;
-   *ppCurOutData = pCurOutData;
-   return 0;
+#define LZ4ULTRA_DECOMPRESSOR_BUILD_LEN(__len) { \
+   unsigned int byte; \
+   do { \
+      if (unlikely(pInBlock >= pInBlockEnd)) return -1; \
+      byte = (unsigned int)*pInBlock++; \
+      __len += byte; \
+   } while (unlikely(byte == 255)); \
 }
 
 /**
@@ -149,76 +68,78 @@ static inline FORCE_INLINE int lz4ultra_expand_match_slow(const unsigned char **
  */
 int lz4ultra_decompressor_expand_block_lz4(const unsigned char *pInBlock, int nBlockSize, unsigned char *pOutData, int nOutDataOffset, int nBlockMaxSize) {
    const unsigned char *pInBlockEnd = pInBlock + nBlockSize;
-   const unsigned char *pInBlockFastEnd = pInBlock + nBlockSize - 16;
    unsigned char *pCurOutData = pOutData + nOutDataOffset;
    const unsigned char *pOutDataEnd = pCurOutData + nBlockMaxSize;
-   const unsigned char *pOutDataFastEnd = pOutDataEnd - 20;
+   const unsigned char *pOutDataFastEnd = pOutDataEnd - 18;
 
-   /* Fast loop */
+   while (likely(pInBlock < pInBlockEnd)) {
+      const unsigned int token = (unsigned int)*pInBlock++;
+      unsigned int nLiterals = ((token & 0xf0) >> 4);
 
-   while (pInBlock < pInBlockFastEnd && pCurOutData < pOutDataFastEnd) {
-      const unsigned char token = *pInBlock++;
-      unsigned int nLiterals = (unsigned int)((token & 0xf0) >> 4);
-
-      if (nLiterals < LITERALS_RUN_LEN) {
+      if (nLiterals != LITERALS_RUN_LEN && pCurOutData <= pOutDataFastEnd) {
+         if (unlikely((pInBlock + nLiterals) > pInBlockEnd)) return -1;
          memcpy(pCurOutData, pInBlock, 16);
-         pInBlock += nLiterals;
-         pCurOutData += nLiterals;
       }
       else {
-         if (lz4ultra_expand_literals_slow(&pInBlock, pInBlockEnd, nLiterals, &pCurOutData, pOutDataEnd))
-            return -1;
+         if (likely(nLiterals == LITERALS_RUN_LEN))
+            LZ4ULTRA_DECOMPRESSOR_BUILD_LEN(nLiterals);
+
+         if (unlikely((pInBlock + nLiterals) > pInBlockEnd)) return -1;
+         if (unlikely((pCurOutData + nLiterals) > pOutDataEnd)) return -1;
+
+         memcpy(pCurOutData, pInBlock, nLiterals);
       }
 
-      if ((pInBlock + 1) < pInBlockEnd) { /* The last token in the block does not include match information */
-         int nMatchOffset;
+      pInBlock += nLiterals;
+      pCurOutData += nLiterals;
 
-         nMatchOffset = ((unsigned int)*pInBlock++);
-         nMatchOffset |= (((unsigned int)*pInBlock++) << 8);
+      if (likely((pInBlock + 2) <= pInBlockEnd)) {
+         unsigned int nMatchOffset;
 
-         const unsigned char *pSrc = pCurOutData - nMatchOffset;
-         if (pSrc >= pOutData) {
-            unsigned int nMatchLen = (unsigned int)(token & 0x0f);
-            if (nMatchLen < MATCH_RUN_LEN && nMatchOffset >= 8 && pCurOutData < pOutDataFastEnd) {
-               memcpy(pCurOutData, pSrc, 8);
-               memcpy(pCurOutData + 8, pSrc + 8, 8);
-               memcpy(pCurOutData+16, pSrc+16, 4);
-               pCurOutData += (MIN_MATCH_SIZE + nMatchLen);
+         nMatchOffset = (unsigned int)*pInBlock++;
+         nMatchOffset |= ((unsigned int)*pInBlock++) << 8;
+
+         unsigned int nMatchLen = (token & 0x0f);
+
+         nMatchLen += MIN_MATCH_SIZE;
+         if (nMatchLen != (MATCH_RUN_LEN + MIN_MATCH_SIZE) && nMatchOffset >= 8 && pCurOutData <= pOutDataFastEnd) {
+            const unsigned char *pSrc = pCurOutData - nMatchOffset;
+
+            if (unlikely(pSrc < pOutData)) return -1;
+
+            memcpy(pCurOutData, pSrc, 8);
+            memcpy(pCurOutData + 8, pSrc + 8, 8);
+            memcpy(pCurOutData + 16, pSrc + 16, 2);
+
+            pCurOutData += nMatchLen;
+         }
+         else {
+            if (likely(nMatchLen == (MATCH_RUN_LEN + MIN_MATCH_SIZE)))
+               LZ4ULTRA_DECOMPRESSOR_BUILD_LEN(nMatchLen);
+
+            if (unlikely((pCurOutData + nMatchLen) > pOutDataEnd)) return -1;
+
+            const unsigned char *pSrc = pCurOutData - nMatchOffset;
+            if (unlikely(pSrc < pOutData)) return -1;
+
+            if (nMatchOffset >= 16 && (pCurOutData + nMatchLen) <= pOutDataFastEnd) {
+               const unsigned char *pCopySrc = pSrc;
+               unsigned char *pCopyDst = pCurOutData;
+               const unsigned char *pCopyEndDst = pCurOutData + nMatchLen;
+
+               do {
+                  memcpy(pCopyDst, pCopySrc, 16);
+                  pCopySrc += 16;
+                  pCopyDst += 16;
+               } while (pCopyDst < pCopyEndDst);
+
+               pCurOutData += nMatchLen;
             }
             else {
-               if (lz4ultra_expand_match_slow(&pInBlock, pInBlockEnd, pSrc, nMatchLen, &pCurOutData, pOutDataEnd, pOutDataFastEnd))
-                  return -1;
+               while (nMatchLen--) {
+                  *pCurOutData++ = *pSrc++;
+               }
             }
-         }
-         else {
-            return -1;
-         }
-      }
-   }
-
-   /* Slow loop for the remainder of the buffer */
-
-   while (pInBlock < pInBlockEnd) {
-      const unsigned char token = *pInBlock++;
-      unsigned int nLiterals = (unsigned int)((token & 0xf0) >> 4);
-
-      if (lz4ultra_expand_literals_slow(&pInBlock, pInBlockEnd, nLiterals, &pCurOutData, pOutDataEnd))
-         return -1;
-
-      if ((pInBlock + 1) < pInBlockEnd) { /* The last token in the block does not include match information */
-         int nMatchOffset;
-
-         nMatchOffset = ((unsigned int)*pInBlock++);
-         nMatchOffset |= (((unsigned int)*pInBlock++) << 8);
-
-         const unsigned char *pSrc = pCurOutData - nMatchOffset;
-         if (pSrc >= pOutData) {
-            unsigned int nMatchLen = (unsigned int)(token & 0x0f);
-            if (lz4ultra_expand_match_slow(&pInBlock, pInBlockEnd, pSrc, nMatchLen, &pCurOutData, pOutDataEnd, pOutDataFastEnd))
-               return -1;
-         }
-         else {
-            return -1;
          }
       }
    }
