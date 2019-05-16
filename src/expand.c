@@ -76,8 +76,7 @@ int lz4ultra_decompressor_expand_block_lz4(const unsigned char *pInBlock, int nB
       const unsigned int token = (unsigned int)*pInBlock++;
       unsigned int nLiterals = ((token & 0xf0) >> 4);
 
-      if (nLiterals != LITERALS_RUN_LEN && pCurOutData <= pOutDataFastEnd) {
-         if (unlikely((pInBlock + nLiterals) > pInBlockEnd)) return -1;
+      if (nLiterals != LITERALS_RUN_LEN && pCurOutData <= pOutDataFastEnd && (pInBlock + 16) <= pInBlockEnd) {
          memcpy(pCurOutData, pInBlock, 16);
       }
       else {
