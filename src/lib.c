@@ -328,7 +328,7 @@ lz4ultra_status_t lz4ultra_compress_stream(lz4ultra_stream_t *pInStream, lz4ultr
       }
 
       if (nInDataSize > 0) {
-         if ((nFlags & LZ4ULTRA_FLAG_RAW_BLOCK) != 0 && (nNumBlocks || nInDataSize > 65536)) {
+         if ((nFlags & LZ4ULTRA_FLAG_RAW_BLOCK) != 0 && (nNumBlocks || nInDataSize > 0x400000)) {
             nError = LZ4ULTRA_ERROR_RAW_TOOLARGE;
             break;
          }
@@ -471,7 +471,7 @@ lz4ultra_status_t lz4ultra_decompress_stream(lz4ultra_stream_t *pInStream, lz4ul
                                              long long *pOriginalSize, long long *pCompressedSize) {
    long long nOriginalSize = 0LL;
    long long nCompressedSize = 0LL;
-   int nBlockMaxCode = 4;
+   int nBlockMaxCode = 7;
    int nIsIndependentBlocks = 0;
    unsigned char cFrameData[16];
    unsigned char *pInBlock;
