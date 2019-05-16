@@ -487,7 +487,7 @@ int main(int argc, char **argv) {
          else
             bArgsError = true;
       }
-      else if (!strcmp(argv[i], "-bd")) {
+      else if (!strcmp(argv[i], "-bench")) {
          if (!bCommandDefined) {
             bCommandDefined = true;
             cCommand = 'b';
@@ -573,7 +573,7 @@ int main(int argc, char **argv) {
       fprintf(stderr, "usage: %s [-c] [-d] [-v] [-r] <infile> <outfile>\n", argv[0]);
       fprintf(stderr, "              -c: check resulting stream after compressing\n");
       fprintf(stderr, "              -d: decompress (default: compress)\n");
-      fprintf(stderr, "             -bd: benchmark in-memory decompression\n");
+      fprintf(stderr, "          -bench: benchmark in-memory decompression\n");
       fprintf(stderr, "          -B4..7: compress with 64, 256, 1024 or 4096 Kb blocks (defaults to -B7)\n");
       fprintf(stderr, "             -BD: use block-dependent compression (default)\n");
       fprintf(stderr, "             -BI: use block-independent compression\n");
