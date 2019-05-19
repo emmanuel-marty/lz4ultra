@@ -52,7 +52,6 @@
  * @param pszDictionaryFilename name of dictionary file, or NULL for none
  * @param nFlags compression flags (LZ4ULTRA_FLAG_xxx)
  * @param nBlockMaxCode maximum block size code (4..7 for 64 Kb..4 Mb)
- * @param nIsIndependentBlocks nonzero to compress using independent blocks, 0 to compress with inter-block back references
  * @param start start function, called when the max block size is finalized and compression is about to start, or NULL for none
  * @param progress progress function, called after compressing each block, or NULL for none
  * @param pOriginalSize pointer to returned input(source) size, updated when this function is successful
@@ -62,8 +61,8 @@
  * @return LZ4ULTRA_OK for success, or an error value from lz4ultra_status_t
  */
 lz4ultra_status_t lz4ultra_compress_file(const char *pszInFilename, const char *pszOutFilename, const char *pszDictionaryFilename,
-                                         const unsigned int nFlags, int nBlockMaxCode, int nIsIndependentBlocks,
-                                         void(*start)(int nBlockMaxCode, int nIsIndependentBlocks),
+                                         const unsigned int nFlags, int nBlockMaxCode,
+                                         void(*start)(int nBlockMaxCode, const unsigned int nFlags),
                                          void(*progress)(long long nOriginalSize, long long nCompressedSize), long long *pOriginalSize, long long *pCompressedSize, int *pCommandCount) {
    lz4ultra_stream_t inStream, outStream;
    void *pDictionaryData = NULL;
@@ -87,7 +86,7 @@ lz4ultra_status_t lz4ultra_compress_file(const char *pszInFilename, const char *
       return nStatus;
    }
 
-   nStatus = lz4ultra_compress_stream(&inStream, &outStream, pDictionaryData, nDictionaryDataSize, nFlags, nBlockMaxCode, nIsIndependentBlocks, start, progress, pOriginalSize, pCompressedSize, pCommandCount);
+   nStatus = lz4ultra_compress_stream(&inStream, &outStream, pDictionaryData, nDictionaryDataSize, nFlags, nBlockMaxCode, start, progress, pOriginalSize, pCompressedSize, pCommandCount);
    
    lz4ultra_dictionary_free(&pDictionaryData);
    outStream.close(&outStream);
@@ -217,7 +216,6 @@ void lz4ultra_dictionary_free(void **ppDictionaryData) {
  * @param nDictionaryDataSize size of dictionary contents, or 0
  * @param nFlags compression flags (LZ4ULTRA_FLAG_xxx)
  * @param nBlockMaxCode maximum block size code (4..7 for 64 Kb..4 Mb)
- * @param nIsIndependentBlocks nonzero to compress using independent blocks, 0 to compress with inter-block back references
  * @param start start function, called when the max block size is finalized and compression is about to start, or NULL for none
  * @param progress progress function, called after compressing each block, or NULL for none
  * @param pOriginalSize pointer to returned input(source) size, updated when this function is successful
@@ -226,9 +224,9 @@ void lz4ultra_dictionary_free(void **ppDictionaryData) {
  *
  * @return LZ4ULTRA_OK for success, or an error value from lz4ultra_status_t
  */
-lz4ultra_status_t lz4ultra_compress_stream(lz4ultra_stream_t *pInStream, lz4ultra_stream_t *pOutStream, const void *pDictionaryData, int nDictionaryDataSize, const unsigned int nFlags,
-                                           int nBlockMaxCode, int nIsIndependentBlocks,
-                                           void(*start)(int nBlockMaxCode, int nIsIndependentBlocks),
+lz4ultra_status_t lz4ultra_compress_stream(lz4ultra_stream_t *pInStream, lz4ultra_stream_t *pOutStream, const void *pDictionaryData, int nDictionaryDataSize, unsigned int nFlags,
+                                           int nBlockMaxCode,
+                                           void(*start)(int nBlockMaxCode, const unsigned int nFlags),
                                            void(*progress)(long long nOriginalSize, long long nCompressedSize), long long *pOriginalSize, long long *pCompressedSize, int *pCommandCount) {
    unsigned char *pInData, *pOutData;
    lz4ultra_compressor compressor;
@@ -242,7 +240,13 @@ lz4ultra_status_t lz4ultra_compress_stream(lz4ultra_stream_t *pInStream, lz4ultr
 
    memset(cFrameData, 0, 16);
 
-   nBlockMaxBits = 8 + (nBlockMaxCode << 1);
+   if (nFlags & LZ4ULTRA_FLAG_LEGACY_FRAMES) {
+      nBlockMaxBits = 23;
+      nFlags |= LZ4ULTRA_FLAG_INDEP_BLOCKS;
+   }
+   else {
+      nBlockMaxBits = 8 + (nBlockMaxCode << 1);
+   }
    nBlockMaxSize = 1 << nBlockMaxBits;
 
    pInData = (unsigned char*)malloc(nBlockMaxSize + HISTORY_SIZE);
@@ -262,7 +266,7 @@ lz4ultra_status_t lz4ultra_compress_stream(lz4ultra_stream_t *pInStream, lz4ultr
 
    /* Load first block of input data */
    nPreloadedInDataSize = (int)pInStream->read(pInStream, pInData + HISTORY_SIZE, nBlockMaxSize);
-   if (nPreloadedInDataSize < nBlockMaxSize) {
+   if (nPreloadedInDataSize < nBlockMaxSize && (nFlags & LZ4ULTRA_FLAG_LEGACY_FRAMES) == 0) {
       /* If the entire input data is shorter than the specified block size, try to reduce the
        * block size until is the smallest one that can fit the data */
 
@@ -292,7 +296,7 @@ lz4ultra_status_t lz4ultra_compress_stream(lz4ultra_stream_t *pInStream, lz4ultr
    }
 
    if ((nFlags & LZ4ULTRA_FLAG_RAW_BLOCK) == 0) {
-      int nHeaderSize = lz4ultra_encode_header(cFrameData, 16, nBlockMaxCode, nIsIndependentBlocks);
+      int nHeaderSize = lz4ultra_encode_header(cFrameData, 16, nFlags, nBlockMaxCode);
       if (nHeaderSize < 0)
          nError = LZ4ULTRA_ERROR_COMPRESSION;
       else {
@@ -303,7 +307,7 @@ lz4ultra_status_t lz4ultra_compress_stream(lz4ultra_stream_t *pInStream, lz4ultr
    }
 
    if (start)
-      start(nBlockMaxCode, nIsIndependentBlocks);
+      start(nBlockMaxCode, nFlags);
 
    int nPreviousBlockSize = 0;
    int nNumBlocks = 0;
@@ -332,7 +336,7 @@ lz4ultra_status_t lz4ultra_compress_stream(lz4ultra_stream_t *pInStream, lz4ultr
             nError = LZ4ULTRA_ERROR_RAW_TOOLARGE;
             break;
          }
-         if (!nIsIndependentBlocks)
+         if (!(nFlags & LZ4ULTRA_FLAG_INDEP_BLOCKS))
             nDictionaryDataSize = 0;
 
          int nOutDataSize;
@@ -344,7 +348,7 @@ lz4ultra_status_t lz4ultra_compress_stream(lz4ultra_stream_t *pInStream, lz4ultr
             /* Write compressed block */
 
             if ((nFlags & LZ4ULTRA_FLAG_RAW_BLOCK) == 0) {
-               nFrameHeaderSize = lz4ultra_encode_compressed_block_frame(cFrameData, 16, nOutDataSize);
+               nFrameHeaderSize = lz4ultra_encode_compressed_block_frame(cFrameData, 16, nFlags, nOutDataSize);
                if (nFrameHeaderSize < 0)
                   nError = LZ4ULTRA_ERROR_COMPRESSION;
                else {
@@ -375,7 +379,7 @@ lz4ultra_status_t lz4ultra_compress_stream(lz4ultra_stream_t *pInStream, lz4ultr
 
             int nFrameHeaderSize;
 
-            nFrameHeaderSize = lz4ultra_encode_uncompressed_block_frame(cFrameData, 16, nInDataSize);
+            nFrameHeaderSize = lz4ultra_encode_uncompressed_block_frame(cFrameData, 16, nFlags, nInDataSize);
             if (nFrameHeaderSize < 0)
                nError = LZ4ULTRA_ERROR_COMPRESSION;
             else {
@@ -394,7 +398,7 @@ lz4ultra_status_t lz4ultra_compress_stream(lz4ultra_stream_t *pInStream, lz4ultr
             }
          }
 
-         if (!nIsIndependentBlocks) {
+         if (!(nFlags & LZ4ULTRA_FLAG_INDEP_BLOCKS)) {
             nPreviousBlockSize = nInDataSize;
             if (nPreviousBlockSize > HISTORY_SIZE)
                nPreviousBlockSize = HISTORY_SIZE;
@@ -418,7 +422,7 @@ lz4ultra_status_t lz4ultra_compress_stream(lz4ultra_stream_t *pInStream, lz4ultr
       nFooterSize = 0;
    }
    else {
-      nFooterSize = lz4ultra_encode_footer_frame(cFrameData, 16);
+      nFooterSize = lz4ultra_encode_footer_frame(cFrameData, 16, nFlags);
       if (nFooterSize < 0)
          nError = LZ4ULTRA_ERROR_COMPRESSION;
    }
@@ -467,12 +471,11 @@ lz4ultra_status_t lz4ultra_compress_stream(lz4ultra_stream_t *pInStream, lz4ultr
  *
  * @return LZ4ULTRA_OK for success, or an error value from lz4ultra_status_t
  */
-lz4ultra_status_t lz4ultra_decompress_stream(lz4ultra_stream_t *pInStream, lz4ultra_stream_t *pOutStream, const void *pDictionaryData, int nDictionaryDataSize, const unsigned int nFlags,
+lz4ultra_status_t lz4ultra_decompress_stream(lz4ultra_stream_t *pInStream, lz4ultra_stream_t *pOutStream, const void *pDictionaryData, int nDictionaryDataSize, unsigned int nFlags,
                                              long long *pOriginalSize, long long *pCompressedSize) {
    long long nOriginalSize = 0LL;
    long long nCompressedSize = 0LL;
    int nBlockMaxCode = 7;
-   int nIsIndependentBlocks = 0;
    unsigned char cFrameData[16];
    unsigned char *pInBlock;
    unsigned char *pOutData;
@@ -484,7 +487,15 @@ lz4ultra_status_t lz4ultra_decompress_stream(lz4ultra_stream_t *pInStream, lz4ul
          return LZ4ULTRA_ERROR_SRC;
       }
 
-      int nSuccess = lz4ultra_decode_header(cFrameData, LZ4ULTRA_HEADER_SIZE, &nBlockMaxCode, &nIsIndependentBlocks);
+      int nExtraHeaderSize = lz4ultra_check_header(cFrameData, LZ4ULTRA_HEADER_SIZE);
+      if (nExtraHeaderSize < 0)
+         return LZ4ULTRA_ERROR_FORMAT;
+
+      if (pInStream->read(pInStream, cFrameData + LZ4ULTRA_HEADER_SIZE, nExtraHeaderSize) != nExtraHeaderSize) {
+         return LZ4ULTRA_ERROR_SRC;
+      }
+
+      int nSuccess = lz4ultra_decode_header(cFrameData, LZ4ULTRA_HEADER_SIZE + nExtraHeaderSize, &nBlockMaxCode, &nFlags);
       if (nSuccess < 0) {
          if (nSuccess == LZ4ULTRA_DECODE_ERR_SUM)
             return LZ4ULTRA_ERROR_CHECKSUM;
@@ -492,10 +503,14 @@ lz4ultra_status_t lz4ultra_decompress_stream(lz4ultra_stream_t *pInStream, lz4ul
             return LZ4ULTRA_ERROR_FORMAT;
       }
 
-      nCompressedSize += (long long)LZ4ULTRA_HEADER_SIZE;
+      nCompressedSize += (long long)(LZ4ULTRA_HEADER_SIZE + nExtraHeaderSize);
    }
 
-   int nBlockMaxBits = 8 + (nBlockMaxCode << 1);
+   int nBlockMaxBits;
+   if (nFlags & LZ4ULTRA_FLAG_LEGACY_FRAMES)
+      nBlockMaxBits = 23;
+   else
+      nBlockMaxBits = 8 + (nBlockMaxCode << 1);
    int nBlockMaxSize = 1 << nBlockMaxBits;
 
    pInBlock = (unsigned char*)malloc(nBlockMaxSize);
@@ -526,14 +541,14 @@ lz4ultra_status_t lz4ultra_decompress_stream(lz4ultra_stream_t *pInStream, lz4ul
          memcpy(pOutData + HISTORY_SIZE - nDictionaryDataSize, pDictionaryData, nDictionaryDataSize);
          nPrevDecompressedSize = nDictionaryDataSize;
 
-         if (!nIsIndependentBlocks)
+         if (!(nFlags & LZ4ULTRA_FLAG_INDEP_BLOCKS))
             nDictionaryDataSize = 0;
       }
 
       if ((nFlags & LZ4ULTRA_FLAG_RAW_BLOCK) == 0) {
          memset(cFrameData, 0, 16);
          if (pInStream->read(pInStream, cFrameData, LZ4ULTRA_FRAME_SIZE) == LZ4ULTRA_FRAME_SIZE) {
-            int nSuccess = lz4ultra_decode_frame(cFrameData, LZ4ULTRA_FRAME_SIZE, &nBlockSize, &nIsUncompressed);
+            int nSuccess = lz4ultra_decode_frame(cFrameData, LZ4ULTRA_FRAME_SIZE, nFlags, &nBlockSize, &nIsUncompressed);
             if (nSuccess < 0)
                nBlockSize = 0;
 
@@ -589,7 +604,7 @@ lz4ultra_status_t lz4ultra_decompress_stream(lz4ultra_stream_t *pInStream, lz4ul
                if (pOutStream->write(pOutStream, pOutData + HISTORY_SIZE, nDecompressedSize) != nDecompressedSize)
                   nDecompressionError = LZ4ULTRA_ERROR_DST;
 
-               if (!nIsIndependentBlocks) {
+               if (!(nFlags & LZ4ULTRA_FLAG_INDEP_BLOCKS)) {
                   nPrevDecompressedSize = nDecompressedSize;
                   if (nPrevDecompressedSize > HISTORY_SIZE)
                      nPrevDecompressedSize = HISTORY_SIZE;

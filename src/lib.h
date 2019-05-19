@@ -58,6 +58,8 @@ typedef enum {
 /* Compression flags */
 #define LZ4ULTRA_FLAG_FAVOR_RATIO    (1<<0)           /**< 1 to compress with the best ratio, 0 to trade some compression ratio for extra decompression speed */
 #define LZ4ULTRA_FLAG_RAW_BLOCK      (1<<1)           /**< 1 to emit raw block */
+#define LZ4ULTRA_FLAG_INDEP_BLOCKS   (1<<2)           /**< 1 if blocks are independent, 0 if using inter-block back references */
+#define LZ4ULTRA_FLAG_LEGACY_FRAMES  (1<<3)           /**< 1 if using the legacy frames format, 0 if using the modern lz4 frame format */
 
 /*-------------- Top level API -------------- */
 
@@ -69,7 +71,6 @@ typedef enum {
  * @param pszDictionaryFilename name of dictionary file, or NULL for none
  * @param nFlags compression flags (LZ4ULTRA_FLAG_xxx)
  * @param nBlockMaxCode maximum block size code (4..7 for 64 Kb..4 Mb)
- * @param nIsIndependentBlocks nonzero to compress using independent blocks, 0 to compress with inter-block back references
  * @param start start function, called when the max block size is finalized and compression is about to start, or NULL for none
  * @param progress progress function, called after compressing each block, or NULL for none
  * @param pOriginalSize pointer to returned input(source) size, updated when this function is successful
@@ -79,8 +80,8 @@ typedef enum {
  * @return LZ4ULTRA_OK for success, or an error value from lz4ultra_status_t
  */
 lz4ultra_status_t lz4ultra_compress_file(const char *pszInFilename, const char *pszOutFilename, const char *pszDictionaryFilename, const unsigned int nFlags,
-   int nBlockMaxCode, int nIsIndependentBlocks,
-   void(*start)(int nBlockMaxCode, int nIsIndependentBlocks),
+   int nBlockMaxCode,
+   void(*start)(int nBlockMaxCode, const unsigned int nFlags),
    void(*progress)(long long nOriginalSize, long long nCompressedSize), long long *pOriginalSize, long long *pCompressedSize, int *pCommandCount);
 
 /**
@@ -127,7 +128,6 @@ void lz4ultra_dictionary_free(void **ppDictionaryData);
  * @param nDictionaryDataSize size of dictionary contents, or 0
  * @param nFlags compression flags (LZ4ULTRA_FLAG_xxx)
  * @param nBlockMaxCode maximum block size code (4..7 for 64 Kb..4 Mb)
- * @param nIsIndependentBlocks nonzero to compress using independent blocks, 0 to compress with inter-block back references
  * @param start start function, called when the max block size is finalized and compression is about to start, or NULL for none
  * @param progress progress function, called after compressing each block, or NULL for none
  * @param pOriginalSize pointer to returned input(source) size, updated when this function is successful
@@ -136,9 +136,9 @@ void lz4ultra_dictionary_free(void **ppDictionaryData);
  *
  * @return LZ4ULTRA_OK for success, or an error value from lz4ultra_status_t
  */
-lz4ultra_status_t lz4ultra_compress_stream(lz4ultra_stream_t *pInStream, lz4ultra_stream_t *pOutStream, const void *pDictionaryData, int nDictionaryDataSize, const unsigned int nFlags,
-   int nBlockMaxCode, int nIsIndependentBlocks,
-   void(*start)(int nBlockMaxCode, int nIsIndependentBlocks),
+lz4ultra_status_t lz4ultra_compress_stream(lz4ultra_stream_t *pInStream, lz4ultra_stream_t *pOutStream, const void *pDictionaryData, int nDictionaryDataSize, unsigned int nFlags,
+   int nBlockMaxCode,
+   void(*start)(int nBlockMaxCode, const unsigned int nFlags),
    void(*progress)(long long nOriginalSize, long long nCompressedSize), long long *pOriginalSize, long long *pCompressedSize, int *pCommandCount);
 
 /**
@@ -154,7 +154,7 @@ lz4ultra_status_t lz4ultra_compress_stream(lz4ultra_stream_t *pInStream, lz4ultr
  *
  * @return LZ4ULTRA_OK for success, or an error value from lz4ultra_status_t
  */
-lz4ultra_status_t lz4ultra_decompress_stream(lz4ultra_stream_t *pInStream, lz4ultra_stream_t *pOutStream, const void *pDictionaryData, int nDictionaryDataSize, const unsigned int nFlags,
+lz4ultra_status_t lz4ultra_decompress_stream(lz4ultra_stream_t *pInStream, lz4ultra_stream_t *pOutStream, const void *pDictionaryData, int nDictionaryDataSize, unsigned int nFlags,
    long long *pOriginalSize, long long *pCompressedSize);
 
 /*-------------- Block compression API --------------*/

@@ -35,7 +35,7 @@
 
 #include <stdio.h>
 
-#define LZ4ULTRA_HEADER_SIZE        7
+#define LZ4ULTRA_HEADER_SIZE        4
 #define LZ4ULTRA_FRAME_SIZE         4
 
 #define LZ4ULTRA_ENCODE_ERR         (-1)
@@ -49,44 +49,57 @@
  *
  * @param pFrameData encoding buffer
  * @param nMaxFrameDataSize max encoding buffer size, in bytes
+ * @param nFlags compression flags (LZ4ULTRA_FLAG_xxx)
  * @param nBlockMaxCode max block size code (4-7)
- * @param nIsIndependentBlocks nonzero if the stream contains independently compressed blocks, 0 if blocks back-reference the previous block
  *
  * @return number of encoded bytes, or -1 for failure
  */
-int lz4ultra_encode_header(unsigned char *pFrameData, const int nMaxFrameDataSize, int nBlockMaxCode, int nIsIndependentBlocks);
+int lz4ultra_encode_header(unsigned char *pFrameData, const int nMaxFrameDataSize, const unsigned int nFlags, int nBlockMaxCode);
 
 /**
  * Encode compressed block frame header
  *
  * @param pFrameData encoding buffer
  * @param nMaxFrameDataSize max encoding buffer size, in bytes
+ * @param nFlags compression flags
  * @param nBlockDataSize compressed block's data size, in bytes
  *
  * @return number of encoded bytes, or -1 for failure
  */
-int lz4ultra_encode_compressed_block_frame(unsigned char *pFrameData, const int nMaxFrameDataSize, const int nBlockDataSize);
+int lz4ultra_encode_compressed_block_frame(unsigned char *pFrameData, const int nMaxFrameDataSize, const unsigned int nFlags, const int nBlockDataSize);
 
 /**
  * Encode uncompressed block frame header
  *
  * @param pFrameData encoding buffer
  * @param nMaxFrameDataSize max encoding buffer size, in bytes
+ * @param nFlags compression flags
  * @param nBlockDataSize uncompressed block's data size, in bytes
  *
  * @return number of encoded bytes, or -1 for failure
  */
-int lz4ultra_encode_uncompressed_block_frame(unsigned char *pFrameData, const int nMaxFrameDataSize, const int nBlockDataSize);
+int lz4ultra_encode_uncompressed_block_frame(unsigned char *pFrameData, const int nMaxFrameDataSize, const unsigned int nFlags, const int nBlockDataSize);
 
 /**
  * Encode terminal frame header
  *
  * @param pFrameData encoding buffer
  * @param nMaxFrameDataSize max encoding buffer size, in bytes
+ * @param nFlags compression flags
  *
  * @return number of encoded bytes, or -1 for failure
  */
-int lz4ultra_encode_footer_frame(unsigned char *pFrameData, const int nMaxFrameDataSize);
+int lz4ultra_encode_footer_frame(unsigned char *pFrameData, const int nMaxFrameDataSize, const unsigned int nFlags);
+
+/**
+ * Check compressed stream header
+ *
+ * @param pFrameData data bytes
+ * @param nFrameDataSize number of bytes to check
+ *
+ * @return the number of extra header bytes to read for decoding, or LZ4ULTRA_DECODE_ERR_xxx for failure
+ */
+int lz4ultra_check_header(const unsigned char *pFrameData, const int nFrameDataSize);
 
 /**
  * Decode compressed stream header
@@ -94,22 +107,23 @@ int lz4ultra_encode_footer_frame(unsigned char *pFrameData, const int nMaxFrameD
  * @param pFrameData data bytes
  * @param nFrameDataSize number of bytes to decode
  * @param nBlockMaxCode pointer to max block size code (4-7), updated if this function succeeds
- * @param nIsIndependentBlocks returned flag that indicates if the stream contains independently compressed blocks
+ * @param nFlags returned compression flags
  *
  * @return LZ4ULTRA_DECODE_OK for success, or LZ4ULTRA_DECODE_ERR_xxx for failure
  */
-int lz4ultra_decode_header(const unsigned char *pFrameData, const int nFrameDataSize, int *nBlockMaxCode, int *nIsIndependentBlocks);
+int lz4ultra_decode_header(const unsigned char *pFrameData, const int nFrameDataSize, int *nBlockMaxCode, unsigned int *nFlags);
 
 /**
  * Decode frame header
  *
  * @param pFrameData data bytes
  * @param nFrameDataSize number of bytes to decode
+ * @param nFlags compression flags
  * @param nBlockSize pointer to block size, updated if this function succeeds (set to 0 if this is the terminal frame)
  * @param nIsUncompressed pointer to compressed block flag, updated if this function succeeds
  *
  * @return LZ4ULTRA_DECODE_OK for success, or LZ4ULTRA_DECODE_ERR_FORMAT for failure
  */
-int lz4ultra_decode_frame(const unsigned char *pFrameData, const int nFrameDataSize, unsigned int *nBlockSize, int *nIsUncompressed);
+int lz4ultra_decode_frame(const unsigned char *pFrameData, const int nFrameDataSize, const unsigned int nFlags, unsigned int *nBlockSize, int *nIsUncompressed);
 
 #endif /* _FRAME_H */

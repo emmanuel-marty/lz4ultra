@@ -46,6 +46,8 @@
 #define OPT_VERBOSE        1
 #define OPT_FAVOR_RATIO    2
 #define OPT_RAW            4
+#define OPT_INDEP_BLOCKS   8
+#define OPT_LEGACY_FRAMES  16
 
 #define TOOL_VERSION "1.1.3"
 
@@ -91,11 +93,11 @@ static long long do_get_time() {
 
 /*---------------------------------------------------------------------------*/
 
-static void compression_start(int nBlockMaxCode, int nIsIndependentBlocks) {
+static void compression_start(int nBlockMaxCode, const unsigned int nFlags) {
    int nBlockMaxBits = 8 + (nBlockMaxCode << 1);
    int nBlockMaxSize = 1 << nBlockMaxBits;
 
-   fprintf(stdout, "Use %d Kb blocks, independent blocks: %s\n", nBlockMaxSize >> 10, nIsIndependentBlocks ? "yes" : "no");
+   fprintf(stdout, "Use %d Kb blocks, independent blocks: %s\n", nBlockMaxSize >> 10, (nFlags & LZ4ULTRA_FLAG_INDEP_BLOCKS) ? "yes" : "no");
 }
 
 static void compression_progress(long long nOriginalSize, long long nCompressedSize) {
@@ -103,7 +105,7 @@ static void compression_progress(long long nOriginalSize, long long nCompressedS
    fflush(stdout);
 }
 
-static int do_compress(const char *pszInFilename, const char *pszOutFilename, const char *pszDictionaryFilename, const unsigned int nOptions, int nBlockMaxCode, int nIsIndependentBlocks) {
+static int do_compress(const char *pszInFilename, const char *pszOutFilename, const char *pszDictionaryFilename, const unsigned int nOptions, int nBlockMaxCode) {
    long long nStartTime = 0LL, nEndTime = 0LL;
    long long nOriginalSize = 0LL, nCompressedSize = 0LL;
    lz4ultra_status_t nStatus;
@@ -115,12 +117,16 @@ static int do_compress(const char *pszInFilename, const char *pszOutFilename, co
       nFlags |= LZ4ULTRA_FLAG_FAVOR_RATIO;
    if (nOptions & OPT_RAW)
       nFlags |= LZ4ULTRA_FLAG_RAW_BLOCK;
+   if (nOptions & OPT_INDEP_BLOCKS)
+      nFlags |= LZ4ULTRA_FLAG_INDEP_BLOCKS;
+   if (nOptions & OPT_LEGACY_FRAMES)
+      nFlags |= LZ4ULTRA_FLAG_LEGACY_FRAMES;
 
    if (nOptions & OPT_VERBOSE) {
       nStartTime = do_get_time();
    }
 
-   nStatus = lz4ultra_compress_file(pszInFilename, pszOutFilename, pszDictionaryFilename, nFlags, nBlockMaxCode, nIsIndependentBlocks,
+   nStatus = lz4ultra_compress_file(pszInFilename, pszOutFilename, pszDictionaryFilename, nFlags, nBlockMaxCode,
       (nOptions & OPT_VERBOSE) ? compression_start : NULL, compression_progress,
       &nOriginalSize, &nCompressedSize, &nCommandCount);
    switch (nStatus) {
@@ -464,7 +470,6 @@ int main(int argc, char **argv) {
    bool bVerifyCompression = false;
    int nBlockMaxCode = 7;
    bool bBlockCodeDefined = false;
-   int nIsIndependentBlocks = 0;
    bool bBlockDependenceDefined = false;
    char cCommand = 'z';
    unsigned int nOptions = OPT_FAVOR_RATIO;
@@ -519,7 +524,7 @@ int main(int argc, char **argv) {
       else if (!strcmp(argv[i], "-BD")) {
          if (!bBlockDependenceDefined) {
             bBlockDependenceDefined = true;
-            nIsIndependentBlocks = 0;
+            nOptions &= ~OPT_INDEP_BLOCKS;
          }
          else
             bArgsError = true;
@@ -527,7 +532,7 @@ int main(int argc, char **argv) {
       else if (!strcmp(argv[i], "-BI")) {
          if (!bBlockDependenceDefined) {
             bBlockDependenceDefined = true;
-            nIsIndependentBlocks = 1;
+            nOptions |= OPT_INDEP_BLOCKS;
          }
          else
             bArgsError = true;
@@ -537,6 +542,13 @@ int main(int argc, char **argv) {
             nBlockMaxCode = atoi(argv[i] + 2);
             if (nBlockMaxCode < 4 || nBlockMaxCode > 7)
                bArgsError = true;
+         }
+         else
+            bArgsError = true;
+      }
+      else if (!strcmp(argv[i], "-l")) {
+         if ((nOptions & OPT_LEGACY_FRAMES) == 0) {
+            nOptions |= OPT_LEGACY_FRAMES;
          }
          else
             bArgsError = true;
@@ -593,7 +605,7 @@ int main(int argc, char **argv) {
    do_init_time();
 
    if (cCommand == 'z') {
-      int nResult = do_compress(pszInFilename, pszOutFilename, pszDictionaryFilename, nOptions, nBlockMaxCode, nIsIndependentBlocks);
+      int nResult = do_compress(pszInFilename, pszOutFilename, pszDictionaryFilename, nOptions, nBlockMaxCode);
       if (nResult == 0 && bVerifyCompression) {
          nResult = do_compare(pszOutFilename, pszInFilename, pszDictionaryFilename, nOptions);
       }

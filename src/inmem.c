@@ -48,13 +48,14 @@
 size_t lz4ultra_inmem_get_max_decompressed_size(const unsigned char *pFileData, size_t nFileSize) {
    const unsigned char *pCurFileData = pFileData;
    const unsigned char *pEndFileData = pCurFileData + nFileSize;
-   int nBlockMaxCode = 0, nIsIndependentBlocks = 0;
+   int nBlockMaxCode = 0;
+   unsigned int nFlags = 0;
    int nBlockMaxBits, nBlockMaxSize;
    size_t nMaxDecompressedSize = 0;
 
    /* Check header */
    if ((pCurFileData + LZ4ULTRA_HEADER_SIZE) > pEndFileData ||
-       lz4ultra_decode_header(pCurFileData, LZ4ULTRA_HEADER_SIZE, &nBlockMaxCode, &nIsIndependentBlocks) != LZ4ULTRA_DECODE_OK)
+       lz4ultra_decode_header(pCurFileData, LZ4ULTRA_HEADER_SIZE, &nBlockMaxCode, &nFlags) != LZ4ULTRA_DECODE_OK)
       return -1;
 
    nBlockMaxBits = 8 + (nBlockMaxCode << 1);
@@ -68,7 +69,7 @@ size_t lz4ultra_inmem_get_max_decompressed_size(const unsigned char *pFileData, 
 
       /* Decode frame header */
       if ((pCurFileData + LZ4ULTRA_FRAME_SIZE) > pEndFileData ||
-          lz4ultra_decode_frame(pCurFileData, LZ4ULTRA_FRAME_SIZE, &nBlockDataSize, &nIsUncompressed) != LZ4ULTRA_DECODE_OK)
+          lz4ultra_decode_frame(pCurFileData, LZ4ULTRA_FRAME_SIZE, nFlags, &nBlockDataSize, &nIsUncompressed) != LZ4ULTRA_DECODE_OK)
          return -1;
       pCurFileData += LZ4ULTRA_FRAME_SIZE;
 
@@ -102,12 +103,13 @@ size_t lz4ultra_inmem_decompress_stream(const unsigned char *pFileData, unsigned
    const unsigned char *pEndFileData = pCurFileData + nFileSize;
    unsigned char *pCurOutBuffer = pOutBuffer;
    const unsigned char *pEndOutBuffer = pCurOutBuffer + nMaxOutBufferSize;
-   int nBlockMaxCode = 0, nIsIndependentBlocks = 0;
+   int nBlockMaxCode = 0;
+   unsigned int nFlags = 0;
    int nBlockMaxBits, nBlockMaxSize, nPreviousBlockSize;
 
    /* Check header */
    if ((pCurFileData + LZ4ULTRA_HEADER_SIZE) > pEndFileData ||
-      lz4ultra_decode_header(pCurFileData, LZ4ULTRA_HEADER_SIZE, &nBlockMaxCode, &nIsIndependentBlocks) != LZ4ULTRA_DECODE_OK)
+      lz4ultra_decode_header(pCurFileData, LZ4ULTRA_HEADER_SIZE, &nBlockMaxCode, &nFlags) != LZ4ULTRA_DECODE_OK)
       return -1;
 
    nBlockMaxBits = 8 + (nBlockMaxCode << 1);
@@ -122,7 +124,7 @@ size_t lz4ultra_inmem_decompress_stream(const unsigned char *pFileData, unsigned
 
       /* Decode frame header */
       if ((pCurFileData + LZ4ULTRA_FRAME_SIZE) > pEndFileData ||
-          lz4ultra_decode_frame(pCurFileData, LZ4ULTRA_FRAME_SIZE, &nBlockDataSize, &nIsUncompressed) != LZ4ULTRA_DECODE_OK)
+          lz4ultra_decode_frame(pCurFileData, LZ4ULTRA_FRAME_SIZE, nFlags, &nBlockDataSize, &nIsUncompressed) != LZ4ULTRA_DECODE_OK)
          return -1;
       pCurFileData += LZ4ULTRA_FRAME_SIZE;
 
@@ -136,7 +138,7 @@ size_t lz4ultra_inmem_decompress_stream(const unsigned char *pFileData, unsigned
          if ((pCurFileData + nBlockDataSize) > pEndFileData)
             return -1;
 
-         if (nIsIndependentBlocks || (nPreviousBlockSize == 0))
+         if ((nFlags & LZ4ULTRA_FLAG_INDEP_BLOCKS) || (nPreviousBlockSize == 0))
             nDecompressedSize = lz4ultra_decompressor_expand_block(pCurFileData, nBlockDataSize, pCurOutBuffer, 0, (int)(pEndOutBuffer - pCurOutBuffer));
          else
             nDecompressedSize = lz4ultra_decompressor_expand_block(pCurFileData, nBlockDataSize, pCurOutBuffer - nPreviousBlockSize, nPreviousBlockSize, (int)(pEndOutBuffer - pCurOutBuffer + nPreviousBlockSize));

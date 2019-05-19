@@ -155,7 +155,7 @@ static void lz4ultra_optimize_matches_lz4(lz4ultra_compressor *pCompressor, cons
          }
          else {
             int nMatchLen = pMatch[m].length;
-            int k, nMatchRunLen;
+            int k;
 
             if ((i + nMatchLen) > (nEndOffset - LAST_LITERALS))
                nMatchLen = nEndOffset - LAST_LITERALS - i;
@@ -167,11 +167,7 @@ static void lz4ultra_optimize_matches_lz4(lz4ultra_compressor *pCompressor, cons
                   nMatchLen = MATCH_RUN_LEN + MIN_MATCH_SIZE - 1;
             }
 
-            nMatchRunLen = nMatchLen;
-            if (nMatchRunLen > MATCH_RUN_LEN)
-               nMatchRunLen = MATCH_RUN_LEN;
-
-            for (k = nMatchLen; k >= nMatchRunLen; k--) {
+            for (k = nMatchLen; k >= (MATCH_RUN_LEN + MIN_MATCH_SIZE); k--) {
                int nCurCost;
 
                nCurCost = 8 + 16 + lz4ultra_get_match_varlen_size(k - MIN_MATCH_SIZE);
