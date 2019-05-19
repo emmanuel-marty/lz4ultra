@@ -54,14 +54,24 @@ size_t lz4ultra_inmem_get_max_decompressed_size(const unsigned char *pFileData, 
    size_t nMaxDecompressedSize = 0;
 
    /* Check header */
-   if ((pCurFileData + LZ4ULTRA_HEADER_SIZE) > pEndFileData ||
-       lz4ultra_decode_header(pCurFileData, LZ4ULTRA_HEADER_SIZE, &nBlockMaxCode, &nFlags) != LZ4ULTRA_DECODE_OK)
+   if ((pCurFileData + LZ4ULTRA_HEADER_SIZE) > pEndFileData)
+      return -1;
+   
+   int nExtraHeaderSize = lz4ultra_check_header(pCurFileData, LZ4ULTRA_HEADER_SIZE);
+   if (nExtraHeaderSize < 0)
       return -1;
 
-   nBlockMaxBits = 8 + (nBlockMaxCode << 1);
+   if (((pCurFileData + LZ4ULTRA_HEADER_SIZE + nExtraHeaderSize) > pEndFileData) || 
+       lz4ultra_decode_header(pCurFileData, LZ4ULTRA_HEADER_SIZE + nExtraHeaderSize, &nBlockMaxCode, &nFlags) != LZ4ULTRA_DECODE_OK)
+      return -1;
+
+   if (nFlags & LZ4ULTRA_FLAG_LEGACY_FRAMES)
+      nBlockMaxBits = 23;
+   else
+      nBlockMaxBits = 8 + (nBlockMaxCode << 1);
    nBlockMaxSize = 1 << nBlockMaxBits;
 
-   pCurFileData += LZ4ULTRA_HEADER_SIZE;
+   pCurFileData += (LZ4ULTRA_HEADER_SIZE + nExtraHeaderSize);
 
    while (pCurFileData < pEndFileData) {
       unsigned int nBlockDataSize = 0;
@@ -108,14 +118,24 @@ size_t lz4ultra_inmem_decompress_stream(const unsigned char *pFileData, unsigned
    int nBlockMaxBits, nBlockMaxSize, nPreviousBlockSize;
 
    /* Check header */
-   if ((pCurFileData + LZ4ULTRA_HEADER_SIZE) > pEndFileData ||
-      lz4ultra_decode_header(pCurFileData, LZ4ULTRA_HEADER_SIZE, &nBlockMaxCode, &nFlags) != LZ4ULTRA_DECODE_OK)
+   if ((pCurFileData + LZ4ULTRA_HEADER_SIZE) > pEndFileData)
       return -1;
 
-   nBlockMaxBits = 8 + (nBlockMaxCode << 1);
+   int nExtraHeaderSize = lz4ultra_check_header(pCurFileData, LZ4ULTRA_HEADER_SIZE);
+   if (nExtraHeaderSize < 0)
+      return -1;
+
+   if (((pCurFileData + LZ4ULTRA_HEADER_SIZE + nExtraHeaderSize) > pEndFileData) ||
+       lz4ultra_decode_header(pCurFileData, LZ4ULTRA_HEADER_SIZE + nExtraHeaderSize, &nBlockMaxCode, &nFlags) != LZ4ULTRA_DECODE_OK)
+      return -1;
+
+   if (nFlags & LZ4ULTRA_FLAG_LEGACY_FRAMES)
+      nBlockMaxBits = 23;
+   else
+      nBlockMaxBits = 8 + (nBlockMaxCode << 1);
    nBlockMaxSize = 1 << nBlockMaxBits;
 
-   pCurFileData += LZ4ULTRA_HEADER_SIZE;
+   pCurFileData += (LZ4ULTRA_HEADER_SIZE + nExtraHeaderSize);
    nPreviousBlockSize = 0;
 
    while (pCurFileData < pEndFileData) {
