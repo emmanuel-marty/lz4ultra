@@ -597,6 +597,7 @@ int main(int argc, char **argv) {
       fprintf(stderr, "             -BI: use block-independent compression\n");
       fprintf(stderr, "              -v: be verbose\n");
       fprintf(stderr, "              -r: raw block format (max. 4 Mb files)\n");
+      fprintf(stderr, "              -l: legacy format compression\n");
       fprintf(stderr, "--favor-decSpeed: trade some ratio for faster decompression\n");
       fprintf(stderr, "   -D <filename>: use dictionary file\n");
       return 100;
