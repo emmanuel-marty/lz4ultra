@@ -1,5 +1,5 @@
 /*
- * lib.c - lz4ultra library implementation
+ * shrink_inmem.h - in-memory compression definitions
  *
  * Copyright (C) 2019 Emmanuel Marty
  *
@@ -30,9 +30,36 @@
  *
  */
 
-#include <stdio.h>
+#ifndef _SHRINK_INMEM_H
+#define _SHRINK_INMEM_H
+
 #include <stdlib.h>
-#include <string.h>
-#include "lib.h"
-#include "frame.h"
-#include "format.h"
+
+/**
+ * Get maximum compressed size of input(source) data
+ *
+ * @param nInputSize input(source) size in bytes
+ * @param nFlags compression flags (LZ4ULTRA_FLAG_xxx)
+ * @param nBlockMaxCode maximum block size code (4..7 for 64 Kb..4 Mb)
+ *
+ * @return maximum compressed size
+ */
+size_t lz4ultra_get_max_compressed_size_inmem(size_t nInputSize, unsigned int nFlags,
+   int nBlockMaxCode);
+
+/**
+ * Compress memory
+ *
+ * @param pInputData pointer to input(source) data to compress
+ * @param pOutBuffer buffer for compressed data
+ * @param nInputSize input(source) size in bytes
+ * @param nMaxOutBufferSize maximum capacity of compression buffer
+ * @param nFlags compression flags (LZ4ULTRA_FLAG_xxx)
+ * @param nBlockMaxCode maximum block size code (4..7 for 64 Kb..4 Mb)
+ *
+ * @return actual compressed size, or -1 for error
+ */
+size_t lz4ultra_compress_inmem(const unsigned char *pInputData, unsigned char *pOutBuffer, size_t nInputSize, size_t nMaxOutBufferSize, unsigned int nFlags,
+   int nBlockMaxCode);
+
+#endif /* _SHRINK_INMEM_H */

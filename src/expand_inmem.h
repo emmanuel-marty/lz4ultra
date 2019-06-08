@@ -1,5 +1,5 @@
 /*
- * lib.c - lz4ultra library implementation
+ * expand_inmem.h - in-memory decompression definitions
  *
  * Copyright (C) 2019 Emmanuel Marty
  *
@@ -30,9 +30,31 @@
  *
  */
 
+#ifndef _EXPAND_INMEM_H
+#define _EXPAND_INMEM_H
+
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include "lib.h"
-#include "frame.h"
-#include "format.h"
+
+/**
+ * Get maximum decompressed size of compressed data
+ *
+ * @param pFileData compressed data
+ * @param nFileSize compressed size in bytes
+ *
+ * @return maximum decompressed size
+ */
+size_t lz4ultra_inmem_get_max_decompressed_size(const unsigned char *pFileData, size_t nFileSize);
+
+/**
+ * Decompress data in memory
+ *
+ * @param pFileData compressed data
+ * @param pOutBuffer buffer for decompressed data
+ * @param nFileSize compressed size in bytes
+ * @param nMaxOutBufferSize maximum capacity of decompression buffer
+ *
+ * @return actual decompressed size, or -1 for error
+ */
+size_t lz4ultra_decompress_inmem(const unsigned char *pFileData, unsigned char *pOutBuffer, size_t nFileSize, size_t nMaxOutBufferSize);
+
+#endif /* _EXPAND_INMEM_H */

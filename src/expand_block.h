@@ -1,5 +1,5 @@
 /*
- * lib.c - lz4ultra library implementation
+ * expand_block.h - block decompressor definitions
  *
  * Copyright (C) 2019 Emmanuel Marty
  *
@@ -30,9 +30,20 @@
  *
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include "lib.h"
-#include "frame.h"
-#include "format.h"
+#ifndef _EXPAND_BLOCK_H
+#define _EXPAND_BLOCK_H
+
+/**
+ * Decompress one data block
+ *
+ * @param pInBlock pointer to compressed data
+ * @param nBlockSize size of compressed data, in bytes
+ * @param pOutData pointer to output decompression buffer (previously decompressed bytes + room for decompressing this block)
+ * @param nOutDataOffset starting index of where to store decompressed bytes in output buffer (and size of previously decompressed bytes)
+ * @param nBlockMaxSize total size of output decompression buffer, in bytes
+ *
+ * @return size of decompressed data in bytes, or -1 for error
+ */
+int lz4ultra_decompressor_expand_block(const unsigned char *pInBlock, int nBlockSize, unsigned char *pOutData, int nOutDataOffset, int nBlockMaxSize);
+
+#endif /* _EXPAND_BLOCK_H */

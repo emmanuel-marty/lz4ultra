@@ -1,5 +1,5 @@
 /*
- * lib.c - lz4ultra library implementation
+ * shrink_block.h - optimal LZ4 block compressor definitions
  *
  * Copyright (C) 2019 Emmanuel Marty
  *
@@ -30,9 +30,24 @@
  *
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include "lib.h"
-#include "frame.h"
-#include "format.h"
+#ifndef _SHRINK_BLOCK_H
+#define _SHRINK_BLOCK_H
+
+/* Forward declarations */
+typedef struct _lz4ultra_compressor lz4ultra_compressor;
+
+/**
+ * Select the most optimal matches, reduce the token count if possible, and then emit a block of compressed LZ4 data
+ *
+ * @param pCompressor compression context
+ * @param pInWindow pointer to input data window (previously compressed bytes + bytes to compress)
+ * @param nPreviousBlockSize number of previously compressed bytes (or 0 for none)
+ * @param nInDataSize number of input bytes to compress
+ * @param pOutData pointer to output buffer
+ * @param nMaxOutDataSize maximum size of output buffer, in bytes
+ *
+ * @return size of compressed data in output buffer, or -1 if the data is uncompressible
+ */
+int lz4ultra_optimize_and_write_block(lz4ultra_compressor *pCompressor, const unsigned char *pInWindow, const int nPreviousBlockSize, const int nInDataSize, unsigned char *pOutData, const int nMaxOutDataSize);
+
+#endif /* _SHRINK_BLOCK_H */

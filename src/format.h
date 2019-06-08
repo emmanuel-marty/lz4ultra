@@ -36,6 +36,7 @@
 #define MIN_MATCH_SIZE  4
 #define MIN_OFFSET 1
 #define MAX_OFFSET 0xffff
+#define HISTORY_SIZE 65536
 #define LITERALS_RUN_LEN 15
 #define MATCH_RUN_LEN 15
 

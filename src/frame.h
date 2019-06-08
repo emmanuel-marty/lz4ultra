@@ -36,6 +36,7 @@
 #include <stdio.h>
 
 #define LZ4ULTRA_HEADER_SIZE        4
+#define LZ4ULTRA_MAX_HEADER_SIZE    7
 #define LZ4ULTRA_FRAME_SIZE         4
 
 #define LZ4ULTRA_ENCODE_ERR         (-1)

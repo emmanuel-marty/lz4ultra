@@ -1,5 +1,5 @@
 /*
- * lib.c - lz4ultra library implementation
+ * dictionary.h - dictionary definitions
  *
  * Copyright (C) 2019 Emmanuel Marty
  *
@@ -30,9 +30,25 @@
  *
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include "lib.h"
-#include "frame.h"
-#include "format.h"
+#ifndef _DICTIONARY_H
+#define _DICTIONARY_H
+
+/**
+ * Load dictionary contents
+ *
+ * @param pszDictionaryFilename name of dictionary file, or NULL for none
+ * @param ppDictionaryData pointer to returned dictionary contents, or NULL for none
+ * @param pDictionaryDataSize pointer to returned size of dictionary contents, or 0
+ *
+ * @return LZSA_OK for success, or an error value from lz4ultra_status_t
+ */
+int lz4ultra_dictionary_load(const char *pszDictionaryFilename, void **ppDictionaryData, int *pDictionaryDataSize);
+
+/**
+ * Free dictionary contents
+ *
+ * @param ppDictionaryData pointer to pointer to dictionary contents
+ */
+void lz4ultra_dictionary_free(void **ppDictionaryData);
+
+#endif /* _DICTIONARY_H */
