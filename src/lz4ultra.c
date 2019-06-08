@@ -490,7 +490,7 @@ static int do_self_test(const unsigned int nOptions, int nBlockMaxCode) {
       float fMatchProbability;
 
       fprintf(stdout, "size %zd", nGeneratedDataSize);
-      for (fMatchProbability = (nOptions & OPT_RAW) ? 0.1f : 0; fMatchProbability <= 0.995f; fMatchProbability += fProbabilitySizeStep) {
+      for (fMatchProbability = (nOptions & (OPT_RAW|OPT_LEGACY_FRAMES)) ? 0.1f : 0; fMatchProbability <= 0.995f; fMatchProbability += fProbabilitySizeStep) {
          int nNumLiteralValues[12] = { 1, 2, 3, 15, 30, 56, 96, 137, 178, 191, 255, 256 };
          float fXorProbability;
 
