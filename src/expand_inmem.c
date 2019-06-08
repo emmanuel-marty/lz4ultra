@@ -104,17 +104,21 @@ size_t lz4ultra_inmem_get_max_decompressed_size(const unsigned char *pFileData, 
  * @param pOutBuffer buffer for decompressed data
  * @param nFileSize compressed size in bytes
  * @param nMaxOutBufferSize maximum capacity of decompression buffer
+ * @param nFlags compression flags (LZ4ULTRA_FLAG_xxx)
  *
  * @return actual decompressed size, or -1 for error
  */
-size_t lz4ultra_decompress_inmem(const unsigned char *pFileData, unsigned char *pOutBuffer, size_t nFileSize, size_t nMaxOutBufferSize) {
+size_t lz4ultra_decompress_inmem(const unsigned char *pFileData, unsigned char *pOutBuffer, size_t nFileSize, size_t nMaxOutBufferSize, unsigned int nFlags) {
    const unsigned char *pCurFileData = pFileData;
    const unsigned char *pEndFileData = pCurFileData + nFileSize;
    unsigned char *pCurOutBuffer = pOutBuffer;
    const unsigned char *pEndOutBuffer = pCurOutBuffer + nMaxOutBufferSize;
    int nBlockMaxCode = 0;
-   unsigned int nFlags = 0;
    int nBlockMaxBits, nBlockMaxSize, nPreviousBlockSize;
+
+   if (nFlags & LZ4ULTRA_FLAG_RAW_BLOCK) {
+      return (size_t)lz4ultra_decompressor_expand_block(pFileData, (int)nFileSize - 2 /* EOD marker */, pOutBuffer, 0, (int)nMaxOutBufferSize);
+   }
 
    /* Check header */
    if ((pCurFileData + LZ4ULTRA_HEADER_SIZE) > pEndFileData)

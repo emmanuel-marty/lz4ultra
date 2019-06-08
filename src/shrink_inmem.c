@@ -159,11 +159,17 @@ size_t lz4ultra_compress_inmem(const unsigned char *pInputData, unsigned char *p
 
          int nOutDataSize;
          int nOutDataEnd = (int)(nMaxOutBufferSize - LZ4ULTRA_FRAME_SIZE - LZ4ULTRA_FRAME_SIZE /* footer */ - nCompressedSize);
+         int nHeaderOffset = LZ4ULTRA_FRAME_SIZE;
+
+         if ((nFlags & LZ4ULTRA_FLAG_RAW_BLOCK) != 0) {
+            nHeaderOffset = 0;
+            nOutDataEnd = (int)(nMaxOutBufferSize - nCompressedSize);
+         }
 
          if (nOutDataEnd > nBlockMaxSize)
             nOutDataEnd = nBlockMaxSize;
 
-         nOutDataSize = lz4ultra_compressor_shrink_block(&compressor, pInputData + nOriginalSize - nPreviousBlockSize, nPreviousBlockSize, nInDataSize, pOutBuffer + LZ4ULTRA_FRAME_SIZE + nCompressedSize, nOutDataEnd);
+         nOutDataSize = lz4ultra_compressor_shrink_block(&compressor, pInputData + nOriginalSize - nPreviousBlockSize, nPreviousBlockSize, nInDataSize, pOutBuffer + nHeaderOffset + nCompressedSize, nOutDataEnd);
          if (nOutDataSize >= 0) {
             int nFrameHeaderSize = 0;
 

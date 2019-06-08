@@ -52,9 +52,10 @@ size_t lz4ultra_inmem_get_max_decompressed_size(const unsigned char *pFileData, 
  * @param pOutBuffer buffer for decompressed data
  * @param nFileSize compressed size in bytes
  * @param nMaxOutBufferSize maximum capacity of decompression buffer
+ * @param nFlags compression flags (LZ4ULTRA_FLAG_xxx)
  *
  * @return actual decompressed size, or -1 for error
  */
-size_t lz4ultra_decompress_inmem(const unsigned char *pFileData, unsigned char *pOutBuffer, size_t nFileSize, size_t nMaxOutBufferSize);
+size_t lz4ultra_decompress_inmem(const unsigned char *pFileData, unsigned char *pOutBuffer, size_t nFileSize, size_t nMaxOutBufferSize, unsigned int nFlags);
 
 #endif /* _EXPAND_INMEM_H */
