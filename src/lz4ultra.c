@@ -50,7 +50,7 @@
 #define OPT_INDEP_BLOCKS   8
 #define OPT_LEGACY_FRAMES  16
 
-#define TOOL_VERSION "1.2.1"
+#define TOOL_VERSION "1.2.2"
 
 /*---------------------------------------------------------------------------*/
 
