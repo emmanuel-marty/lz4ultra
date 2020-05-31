@@ -66,7 +66,7 @@ int lz4ultra_compressor_init(lz4ultra_compressor *pCompressor, const int nMaxWin
             pCompressor->open_intervals = (unsigned long long *)malloc((LCP_MAX + 1) * sizeof(unsigned long long));
 
             if (pCompressor->open_intervals) {
-               pCompressor->match = (lz4ultra_match *)malloc(nMaxWindowSize * NMATCHES_PER_OFFSET * sizeof(lz4ultra_match));
+               pCompressor->match = (lz4ultra_match *)malloc(nMaxWindowSize * sizeof(lz4ultra_match));
 
                if (pCompressor->match)
                   return 0;

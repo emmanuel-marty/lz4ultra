@@ -109,51 +109,56 @@ static inline int lz4ultra_write_match_varlen(unsigned char *pOutData, int nOutO
  */
 static void lz4ultra_optimize_matches_lz4(lz4ultra_compressor *pCompressor, const int nStartOffset, const int nEndOffset) {
    int *cost = (int*)pCompressor->pos_data;  /* Reuse */
+   int *score = (int*)pCompressor->intervals;  /* Reuse */
+   int nExtraMatchScore = (pCompressor->flags & LZ4ULTRA_FLAG_FAVOR_RATIO) ? 1 : 5;
    int nLastLiteralsOffset;
    int i;
 
    cost[nEndOffset - 1] = 8;
+   score[nEndOffset - 1] = 0;
    nLastLiteralsOffset = nEndOffset;
 
    for (i = nEndOffset - 2; i != (nStartOffset - 1); i--) {
-      int nBestCost, nBestMatchLen, nBestMatchOffset;
+      int nBestCost, nBestScore, nBestMatchLen, nBestMatchOffset;
 
       int nLiteralsLen = nLastLiteralsOffset - i;
       nBestCost = 8 + cost[i + 1];
+      nBestScore = 1 + score[i + 1];
       if (nLiteralsLen >= LITERALS_RUN_LEN && ((nLiteralsLen - LITERALS_RUN_LEN) % 255) == 0) {
          /* Add to the cost of encoding literals as their number crosses a variable length encoding boundary.
           * The cost automatically accumulates down the chain. */
          nBestCost += 8;
       }
-      if (pCompressor->match[(i + 1) << MATCHES_PER_OFFSET_SHIFT].length >= MIN_MATCH_SIZE)
+      if (pCompressor->match[i + 1].length >= MIN_MATCH_SIZE)
          nBestCost += MODESWITCH_PENALTY;
       nBestMatchLen = 0;
       nBestMatchOffset = 0;
 
-      lz4ultra_match *pMatch = pCompressor->match + (i << MATCHES_PER_OFFSET_SHIFT);
-      int m;
+      lz4ultra_match *pMatch = pCompressor->match + i;
 
-      for (m = 0; m < NMATCHES_PER_OFFSET && pMatch[m].length >= MIN_MATCH_SIZE; m++) {
-         if (pMatch[m].length >= LEAVE_ALONE_MATCH_SIZE) {
-            int nCurCost;
-            int nMatchLen = pMatch[m].length;
+      if (pMatch->length >= MIN_MATCH_SIZE) {
+         if (pMatch->length >= LEAVE_ALONE_MATCH_SIZE) {
+            int nCurCost, nCurScore;
+            int nMatchLen = pMatch->length;
 
             if ((i + nMatchLen) > (nEndOffset - LAST_LITERALS))
                nMatchLen = nEndOffset - LAST_LITERALS - i;
 
             nCurCost = 8 + 16 + lz4ultra_get_match_varlen_size(nMatchLen - MIN_MATCH_SIZE);
             nCurCost += cost[i + nMatchLen];
-            if (pCompressor->match[(i + nMatchLen) << MATCHES_PER_OFFSET_SHIFT].length >= MIN_MATCH_SIZE)
+            if (pCompressor->match[i + nMatchLen].length >= MIN_MATCH_SIZE)
                nCurCost += MODESWITCH_PENALTY;
+            nCurScore = nExtraMatchScore + score[i + nMatchLen];
 
-            if (nBestCost > nCurCost) {
+            if (nBestCost > nCurCost || (nBestCost == nCurCost && nBestScore > nCurScore)) {
                nBestCost = nCurCost;
+               nBestScore = nCurScore;
                nBestMatchLen = nMatchLen;
-               nBestMatchOffset = pMatch[m].offset;
+               nBestMatchOffset = pMatch->offset;
             }
          }
          else {
-            int nMatchLen = pMatch[m].length;
+            int nMatchLen = pMatch->length;
             int k;
 
             if ((i + nMatchLen) > (nEndOffset - LAST_LITERALS))
@@ -167,32 +172,36 @@ static void lz4ultra_optimize_matches_lz4(lz4ultra_compressor *pCompressor, cons
             }
 
             for (k = nMatchLen; k >= (MATCH_RUN_LEN + MIN_MATCH_SIZE); k--) {
-               int nCurCost;
+               int nCurCost, nCurScore;
 
                nCurCost = 8 + 16 + lz4ultra_get_match_varlen_size(k - MIN_MATCH_SIZE);
                nCurCost += cost[i + k];
-               if (pCompressor->match[(i + k) << MATCHES_PER_OFFSET_SHIFT].length >= MIN_MATCH_SIZE)
+               if (pCompressor->match[i + k].length >= MIN_MATCH_SIZE)
                   nCurCost += MODESWITCH_PENALTY;
+               nCurScore = nExtraMatchScore + score[i + k];
 
-               if (nBestCost > nCurCost) {
+               if (nBestCost > nCurCost || (nBestCost == nCurCost && nBestScore > nCurScore)) {
                   nBestCost = nCurCost;
+                  nBestScore = nCurScore;
                   nBestMatchLen = k;
-                  nBestMatchOffset = pMatch[m].offset;
+                  nBestMatchOffset = pMatch->offset;
                }
             }
 
             for (;  k >= MIN_MATCH_SIZE; k--) {
-               int nCurCost;
+               int nCurCost, nCurScore;
 
                nCurCost = 8 + 16 /* no extra match len bytes */;
                nCurCost += cost[i + k];
-               if (pCompressor->match[(i + k) << MATCHES_PER_OFFSET_SHIFT].length >= MIN_MATCH_SIZE)
+               if (pCompressor->match[i + k].length >= MIN_MATCH_SIZE)
                   nCurCost += MODESWITCH_PENALTY;
+               nCurScore = nExtraMatchScore + score[i + k];
 
-               if (nBestCost > nCurCost) {
+               if (nBestCost > nCurCost || (nBestCost == nCurCost && nBestScore > nCurScore)) {
                   nBestCost = nCurCost;
+                  nBestScore = nCurScore;
                   nBestMatchLen = k;
-                  nBestMatchOffset = pMatch[m].offset;
+                  nBestMatchOffset = pMatch->offset;
                }
             }
          }
@@ -202,6 +211,7 @@ static void lz4ultra_optimize_matches_lz4(lz4ultra_compressor *pCompressor, cons
          nLastLiteralsOffset = i;
 
       cost[i] = nBestCost;
+      score[i] = nBestScore;
       pMatch->length = nBestMatchLen;
       pMatch->offset = nBestMatchOffset;
    }
@@ -212,15 +222,16 @@ static void lz4ultra_optimize_matches_lz4(lz4ultra_compressor *pCompressor, cons
  * impacting the compression ratio
  *
  * @param pCompressor compression context
+ * @param pInWindow pointer to input data window (previously compressed bytes + bytes to compress)
  * @param nStartOffset current offset in input window (typically the number of previously compressed bytes)
  * @param nEndOffset offset to end finding matches at (typically the size of the total input window in bytes
  */
-static void lz4ultra_optimize_command_count_lz4(lz4ultra_compressor *pCompressor, const int nStartOffset, const int nEndOffset) {
+static void lz4ultra_optimize_command_count_lz4(lz4ultra_compressor *pCompressor, const unsigned char *pInWindow, const int nStartOffset, const int nEndOffset) {
    int i;
    int nNumLiterals = 0;
 
    for (i = nStartOffset; i < nEndOffset; ) {
-      lz4ultra_match *pMatch = pCompressor->match + (i << MATCHES_PER_OFFSET_SHIFT);
+      lz4ultra_match *pMatch = pCompressor->match + i;
 
       if (pMatch->length >= MIN_MATCH_SIZE) {
          int nMatchLen = pMatch->length;
@@ -230,7 +241,7 @@ static void lz4ultra_optimize_command_count_lz4(lz4ultra_compressor *pCompressor
             int nEncodedMatchLen = nMatchLen - MIN_MATCH_SIZE;
             int nCommandSize = 8 /* token */ + lz4ultra_get_literals_varlen_size(nNumLiterals) + 16 /* match offset */ + lz4ultra_get_match_varlen_size(nEncodedMatchLen);
 
-            if (pCompressor->match[(i + nMatchLen) << MATCHES_PER_OFFSET_SHIFT].length >= MIN_MATCH_SIZE) {
+            if (pCompressor->match[i + nMatchLen].length >= MIN_MATCH_SIZE) {
                if (nCommandSize >= ((nMatchLen << 3) + lz4ultra_get_literals_varlen_size(nNumLiterals + nMatchLen))) {
                   /* This command is a match; the next command is also a match. The next command currently has no literals; replacing this command by literals will
                    * make the next command eat the cost of encoding the current number of literals, + nMatchLen extra literals. The size of the current match command is
@@ -246,7 +257,7 @@ static void lz4ultra_optimize_command_count_lz4(lz4ultra_compressor *pCompressor
                do {
                   nCurIndex++;
                   nNextNumLiterals++;
-               } while (nCurIndex < nEndOffset && pCompressor->match[nCurIndex << MATCHES_PER_OFFSET_SHIFT].length < MIN_MATCH_SIZE);
+               } while (nCurIndex < nEndOffset && pCompressor->match[nCurIndex].length < MIN_MATCH_SIZE);
 
                if (nCommandSize >= ((nMatchLen << 3) + lz4ultra_get_literals_varlen_size(nNumLiterals + nNextNumLiterals + nMatchLen) - lz4ultra_get_literals_varlen_size(nNextNumLiterals))) {
                   /* This command is a match, and is followed by literals, and then another match or the end of the input data. If encoding this match as literals doesn't take
@@ -260,19 +271,29 @@ static void lz4ultra_optimize_command_count_lz4(lz4ultra_compressor *pCompressor
             int j;
 
             for (j = 0; j < nMatchLen; j++) {
-               pCompressor->match[(i + j) << MATCHES_PER_OFFSET_SHIFT].length = 0;
+               pCompressor->match[i + j].length = 0;
             }
             nNumLiterals += nMatchLen;
             i += nMatchLen;
          }
          else {
-            if ((i + nMatchLen) < nEndOffset && nMatchLen >= LCP_MAX &&
-               pMatch->offset && pMatch->offset <= 32 && pCompressor->match[(i + nMatchLen) << MATCHES_PER_OFFSET_SHIFT].offset == pMatch->offset && (nMatchLen % pMatch->offset) == 0) {
+            if ((i + nMatchLen) < nEndOffset && pMatch->offset > 0 && nMatchLen >= 2 &&
+               pCompressor->match[i + nMatchLen].offset > 0 &&
+               pCompressor->match[i + nMatchLen].length >= 2 &&
+               (nMatchLen + pCompressor->match[i + nMatchLen].length) >= LEAVE_ALONE_MATCH_SIZE &&
+               (nMatchLen + pCompressor->match[i + nMatchLen].length) <= 65535 &&
+               (i + nMatchLen) >= (int)pMatch->offset &&
+               (i + nMatchLen) >= (int)pCompressor->match[i + nMatchLen].offset &&
+               (i + nMatchLen + (int)pCompressor->match[i + nMatchLen].length) <= nEndOffset &&
+               !memcmp(pInWindow + i + nMatchLen - pMatch->offset,
+                  pInWindow + i + nMatchLen - pCompressor->match[i + nMatchLen].offset,
+                  pCompressor->match[i + nMatchLen].length)) {
+
                /* Join */
 
-               pMatch->length += pCompressor->match[(i + nMatchLen) << MATCHES_PER_OFFSET_SHIFT].length;
-               pCompressor->match[(i + nMatchLen) << MATCHES_PER_OFFSET_SHIFT].offset = 0;
-               pCompressor->match[(i + nMatchLen) << MATCHES_PER_OFFSET_SHIFT].length = -1;
+               pMatch->length += pCompressor->match[i + nMatchLen].length;
+               pCompressor->match[i + nMatchLen].offset = 0;
+               pCompressor->match[i + nMatchLen].length = -1;
                continue;
             }
 
@@ -306,7 +327,7 @@ static int lz4ultra_write_block_lz4(lz4ultra_compressor *pCompressor, const unsi
    int nOutOffset = 0;
 
    for (i = nStartOffset; i < nEndOffset; ) {
-      lz4ultra_match *pMatch = pCompressor->match + (i << MATCHES_PER_OFFSET_SHIFT);
+      lz4ultra_match *pMatch = pCompressor->match + i;
 
       if (pMatch->length >= MIN_MATCH_SIZE) {
          int nMatchOffset = pMatch->offset;
@@ -390,7 +411,7 @@ static int lz4ultra_write_block_lz4(lz4ultra_compressor *pCompressor, const unsi
  */
 int lz4ultra_optimize_and_write_block(lz4ultra_compressor *pCompressor, const unsigned char *pInWindow, const int nPreviousBlockSize, const int nInDataSize, unsigned char *pOutData, const int nMaxOutDataSize) {
    lz4ultra_optimize_matches_lz4(pCompressor, nPreviousBlockSize, nPreviousBlockSize + nInDataSize);
-   lz4ultra_optimize_command_count_lz4(pCompressor, nPreviousBlockSize, nPreviousBlockSize + nInDataSize);
+   lz4ultra_optimize_command_count_lz4(pCompressor, pInWindow, nPreviousBlockSize, nPreviousBlockSize + nInDataSize);
 
    return lz4ultra_write_block_lz4(pCompressor, pInWindow, nPreviousBlockSize, nPreviousBlockSize + nInDataSize, pOutData, nMaxOutDataSize);
 }

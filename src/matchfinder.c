@@ -83,7 +83,7 @@ int lz4ultra_build_suffix_array(lz4ultra_compressor *pCompressor, const unsigned
     * saves us from having to build the inverse suffix array index, as the LCP is calculated without it using this method,
     * and the interval builder below doesn't need it either. */
    intervals[0] &= POS_MASK;
-   for (i = 1; i < nInWindowSize - 1; i++) {
+   for (i = 1; i < nInWindowSize; i++) {
       int nIndex = (int)(intervals[i] & POS_MASK);
       int nLen = PLCP[nIndex];
       if (nLen < MIN_MATCH_SIZE)
@@ -92,8 +92,6 @@ int lz4ultra_build_suffix_array(lz4ultra_compressor *pCompressor, const unsigned
          nLen = LCP_MAX;
       intervals[i] = ((unsigned long long)nIndex) | (((unsigned long long)nLen) << LCP_SHIFT);
    }
-   if (i < nInWindowSize)
-      intervals[i] &= POS_MASK;
 
    /**
     * Build intervals for finding matches
@@ -258,36 +256,32 @@ void lz4ultra_skip_matches(lz4ultra_compressor *pCompressor, const int nStartOff
 }
 
 /**
- * Find all matches for the data to be compressed. Up to NMATCHES_PER_OFFSET matches are stored for each offset, for
- * the optimizer to look at.
+ * Find all matches for the data to be compressed.
  *
  * @param pCompressor compression context
  * @param nStartOffset current offset in input window (typically the number of previously compressed bytes)
  * @param nEndOffset offset to end finding matches at (typically the size of the total input window in bytes
  */
 void lz4ultra_find_all_matches(lz4ultra_compressor *pCompressor, const int nStartOffset, const int nEndOffset) {
-   lz4ultra_match *pMatch = pCompressor->match + (nStartOffset << MATCHES_PER_OFFSET_SHIFT);
+   lz4ultra_match *pMatch = pCompressor->match + nStartOffset;
    int i;
 
    for (i = nStartOffset; i < nEndOffset; i++) {
-      int nMatches = lz4ultra_find_matches_at(pCompressor, i, pMatch, NMATCHES_PER_OFFSET);
-      int m;
+      int nMatches = lz4ultra_find_matches_at(pCompressor, i, pMatch, 1);
 
-      for (m = 0; m < NMATCHES_PER_OFFSET; m++) {
-         if (nMatches <= m || i > (nEndOffset - LAST_MATCH_OFFSET)) {
-            pMatch->length = 0;
-            pMatch->offset = 0;
-         }
-         else {
-            int nMaxLen = (nEndOffset - LAST_LITERALS) - i;
-            if (nMaxLen < 0)
-               nMaxLen = 0;
-            if (pMatch->length > (unsigned int)nMaxLen)
-               pMatch->length = (unsigned int)nMaxLen;
-         }
-
-         pMatch++;
+      if (nMatches == 0 || i > (nEndOffset - LAST_MATCH_OFFSET)) {
+         pMatch->length = 0;
+         pMatch->offset = 0;
       }
+      else {
+         int nMaxLen = (nEndOffset - LAST_LITERALS) - i;
+         if (nMaxLen < 0)
+            nMaxLen = 0;
+         if (pMatch->length > (unsigned int)nMaxLen)
+            pMatch->length = (unsigned int)nMaxLen;
+      }
+
+      pMatch++;
    }
 }
 

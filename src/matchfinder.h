@@ -58,8 +58,7 @@ int lz4ultra_build_suffix_array(lz4ultra_compressor *pCompressor, const unsigned
 void lz4ultra_skip_matches(lz4ultra_compressor *pCompressor, const int nStartOffset, const int nEndOffset);
 
 /**
- * Find all matches for the data to be compressed. Up to NMATCHES_PER_OFFSET matches are stored for each offset, for
- * the optimizer to look at.
+ * Find all matches for the data to be compressed.
  *
  * @param pCompressor compression context
  * @param nStartOffset current offset in input window (typically the number of previously compressed bytes)
