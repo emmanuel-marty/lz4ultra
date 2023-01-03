@@ -110,7 +110,7 @@ static inline int lz4ultra_write_match_varlen(unsigned char *pOutData, int nOutO
 static void lz4ultra_optimize_matches_lz4(lz4ultra_compressor *pCompressor, const int nStartOffset, const int nEndOffset) {
    int *cost = (int*)pCompressor->pos_data;  /* Reuse */
    int *score = (int*)pCompressor->intervals;  /* Reuse */
-   int nExtraMatchScore = (pCompressor->flags & LZ4ULTRA_FLAG_FAVOR_RATIO) ? 1 : 5;
+   const int nExtraMatchScore = (pCompressor->flags & LZ4ULTRA_FLAG_FAVOR_RATIO) ? 1 : 5;
    int nLastLiteralsOffset;
    int i;
 
@@ -121,7 +121,7 @@ static void lz4ultra_optimize_matches_lz4(lz4ultra_compressor *pCompressor, cons
    for (i = nEndOffset - 2; i != (nStartOffset - 1); i--) {
       int nBestCost, nBestScore, nBestMatchLen, nBestMatchOffset;
 
-      int nLiteralsLen = nLastLiteralsOffset - i;
+      const int nLiteralsLen = nLastLiteralsOffset - i;
       nBestCost = 8 + cost[i + 1];
       nBestScore = 1 + score[i + 1];
       if (nLiteralsLen >= LITERALS_RUN_LEN && ((nLiteralsLen - LITERALS_RUN_LEN) % 255) == 0) {
@@ -234,12 +234,12 @@ static void lz4ultra_optimize_command_count_lz4(lz4ultra_compressor *pCompressor
       lz4ultra_match *pMatch = pCompressor->match + i;
 
       if (pMatch->length >= MIN_MATCH_SIZE) {
-         int nMatchLen = pMatch->length;
+         const int nMatchLen = pMatch->length;
          int nReduce = 0;
 
          if (nMatchLen <= 19 && (i + nMatchLen) < nEndOffset) {
-            int nEncodedMatchLen = nMatchLen - MIN_MATCH_SIZE;
-            int nCommandSize = 8 /* token */ + lz4ultra_get_literals_varlen_size(nNumLiterals) + 16 /* match offset */ + lz4ultra_get_match_varlen_size(nEncodedMatchLen);
+            const int nEncodedMatchLen = nMatchLen - MIN_MATCH_SIZE;
+            const int nCommandSize = 8 /* token */ + lz4ultra_get_literals_varlen_size(nNumLiterals) + 16 /* match offset */ + lz4ultra_get_match_varlen_size(nEncodedMatchLen);
 
             if (pCompressor->match[i + nMatchLen].length >= MIN_MATCH_SIZE) {
                if (nCommandSize >= ((nMatchLen << 3) + lz4ultra_get_literals_varlen_size(nNumLiterals + nMatchLen))) {
@@ -327,15 +327,15 @@ static int lz4ultra_write_block_lz4(lz4ultra_compressor *pCompressor, const unsi
    int nOutOffset = 0;
 
    for (i = nStartOffset; i < nEndOffset; ) {
-      lz4ultra_match *pMatch = pCompressor->match + i;
+      const lz4ultra_match *pMatch = pCompressor->match + i;
 
       if (pMatch->length >= MIN_MATCH_SIZE) {
-         int nMatchOffset = pMatch->offset;
-         int nMatchLen = pMatch->length;
-         int nEncodedMatchLen = nMatchLen - MIN_MATCH_SIZE;
-         int nTokenLiteralsLen = (nNumLiterals >= LITERALS_RUN_LEN) ? LITERALS_RUN_LEN : nNumLiterals;
-         int nTokenMatchLen = (nEncodedMatchLen >= MATCH_RUN_LEN) ? MATCH_RUN_LEN : nEncodedMatchLen;
-         int nCommandSize = 8 /* token */ + lz4ultra_get_literals_varlen_size(nNumLiterals) + (nNumLiterals << 3) + 16 /* match offset */ + lz4ultra_get_match_varlen_size(nEncodedMatchLen);
+         const int nMatchOffset = pMatch->offset;
+         const int nMatchLen = pMatch->length;
+         const int nEncodedMatchLen = nMatchLen - MIN_MATCH_SIZE;
+         const int nTokenLiteralsLen = (nNumLiterals >= LITERALS_RUN_LEN) ? LITERALS_RUN_LEN : nNumLiterals;
+         const int nTokenMatchLen = (nEncodedMatchLen >= MATCH_RUN_LEN) ? MATCH_RUN_LEN : nEncodedMatchLen;
+         const int nCommandSize = 8 /* token */ + lz4ultra_get_literals_varlen_size(nNumLiterals) + (nNumLiterals << 3) + 16 /* match offset */ + lz4ultra_get_match_varlen_size(nEncodedMatchLen);
 
          if ((nOutOffset + (nCommandSize >> 3)) > nMaxOutDataSize)
             return -1;
@@ -367,8 +367,8 @@ static int lz4ultra_write_block_lz4(lz4ultra_compressor *pCompressor, const unsi
    }
 
    {
-      int nTokenLiteralsLen = (nNumLiterals >= LITERALS_RUN_LEN) ? LITERALS_RUN_LEN : nNumLiterals;
-      int nCommandSize = 8 /* token */ + lz4ultra_get_literals_varlen_size(nNumLiterals) + (nNumLiterals << 3);
+      const int nTokenLiteralsLen = (nNumLiterals >= LITERALS_RUN_LEN) ? LITERALS_RUN_LEN : nNumLiterals;
+      const int nCommandSize = 8 /* token */ + lz4ultra_get_literals_varlen_size(nNumLiterals) + (nNumLiterals << 3);
 
       if ((nOutOffset + (nCommandSize >> 3)) > nMaxOutDataSize)
          return -1;
