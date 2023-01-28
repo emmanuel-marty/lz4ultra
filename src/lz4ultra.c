@@ -95,8 +95,8 @@ static long long do_get_time() {
 /*---------------------------------------------------------------------------*/
 
 static void compression_start(int nBlockMaxCode, const unsigned int nFlags) {
-   int nBlockMaxBits = 8 + (nBlockMaxCode << 1);
-   int nBlockMaxSize = 1 << nBlockMaxBits;
+   const int nBlockMaxBits = 8 + (nBlockMaxCode << 1);
+   const int nBlockMaxSize = 1 << nBlockMaxBits;
 
    fprintf(stdout, "Use %d Kb blocks, independent blocks: %s\n", nBlockMaxSize >> 10, (nFlags & LZ4ULTRA_FLAG_INDEP_BLOCKS) ? "yes" : "no");
 }
@@ -364,7 +364,7 @@ static void generate_compressible_data(unsigned char *pBuffer, size_t nBufferSiz
 
    srand(nSeed);
 
-   if (nIndex >= nBufferSize) return;
+   if (nBufferSize == 0) return;
    pBuffer[nIndex++] = rand() % nNumLiteralValues;
 
    while (nIndex < nBufferSize) {
@@ -403,8 +403,6 @@ static void xor_data(unsigned char *pBuffer, size_t nBufferSize, unsigned int nS
    int nXorProbability = (int)(fXorProbability * 1023.0f);
 
    srand(nSeed);
-
-   if (nIndex >= nBufferSize) return;
 
    while (nIndex < nBufferSize) {
       if ((rand() & 1023) < nXorProbability) {
@@ -447,7 +445,7 @@ static int do_self_test(const unsigned int nOptions, int nBlockMaxCode) {
       free(pGeneratedData);
       pGeneratedData = NULL;
 
-      fprintf(stderr, "out of memory, %zd bytes needed\n", nMaxCompressedDataSize);
+      fprintf(stderr, "out of memory, %zu bytes needed\n", nMaxCompressedDataSize);
       return 100;
    }
 
@@ -458,7 +456,7 @@ static int do_self_test(const unsigned int nOptions, int nBlockMaxCode) {
       free(pGeneratedData);
       pGeneratedData = NULL;
 
-      fprintf(stderr, "out of memory, %zd bytes needed\n", nMaxCompressedDataSize);
+      fprintf(stderr, "out of memory, %zu bytes needed\n", nMaxCompressedDataSize);
       return 100;
    }
 
@@ -491,7 +489,7 @@ static int do_self_test(const unsigned int nOptions, int nBlockMaxCode) {
    for (nGeneratedDataSize = 16384; nGeneratedDataSize <= (4 * HISTORY_SIZE); nGeneratedDataSize += nDataSizeStep) {
       float fMatchProbability;
 
-      fprintf(stdout, "size %zd", nGeneratedDataSize);
+      fprintf(stdout, "size %zu", nGeneratedDataSize);
       for (fMatchProbability = (nOptions & (OPT_RAW|OPT_LEGACY_FRAMES)) ? 0.1f : 0; fMatchProbability <= 0.995f; fMatchProbability += fProbabilitySizeStep) {
          int nNumLiteralValues[12] = { 1, 2, 3, 15, 30, 56, 96, 137, 178, 191, 255, 256 };
          float fXorProbability;
@@ -516,7 +514,7 @@ static int do_self_test(const unsigned int nOptions, int nBlockMaxCode) {
                free(pGeneratedData);
                pGeneratedData = NULL;
 
-               fprintf(stderr, "\nself-test: error compressing size %zd, seed %d, match probability %f, literals range %d\n", nGeneratedDataSize, nSeed, fMatchProbability, nNumLiteralValues[i]);
+               fprintf(stderr, "\nself-test: error compressing size %zu, seed %u, match probability %f, literals range %d\n", nGeneratedDataSize, nSeed, fMatchProbability, nNumLiteralValues[i]);
                return 100;
             }
 
@@ -533,7 +531,7 @@ static int do_self_test(const unsigned int nOptions, int nBlockMaxCode) {
                free(pGeneratedData);
                pGeneratedData = NULL;
 
-               fprintf(stderr, "\nself-test: error decompressing size %zd, seed %d, match probability %f, literals range %d\n", nGeneratedDataSize, nSeed, fMatchProbability, nNumLiteralValues[i]);
+               fprintf(stderr, "\nself-test: error decompressing size %zu, seed %u, match probability %f, literals range %d\n", nGeneratedDataSize, nSeed, fMatchProbability, nNumLiteralValues[i]);
                return 100;
             }
 
@@ -547,7 +545,7 @@ static int do_self_test(const unsigned int nOptions, int nBlockMaxCode) {
                free(pGeneratedData);
                pGeneratedData = NULL;
 
-               fprintf(stderr, "\nself-test: error comparing decompressed and original data, size %zd, seed %d, match probability %f, literals range %d\n", nGeneratedDataSize, nSeed, fMatchProbability, nNumLiteralValues[i]);
+               fprintf(stderr, "\nself-test: error comparing decompressed and original data, size %zu, seed %u, match probability %f, literals range %d\n", nGeneratedDataSize, nSeed, fMatchProbability, nNumLiteralValues[i]);
                return 100;
             }
 
@@ -628,7 +626,7 @@ static int do_compr_benchmark(const char *pszInFilename, const char *pszOutFilen
    pFileData = (unsigned char*)malloc(nFileSize);
    if (!pFileData) {
       fclose(f_in);
-      fprintf(stderr, "out of memory for reading '%s', %zd bytes needed\n", pszInFilename, nFileSize);
+      fprintf(stderr, "out of memory for reading '%s', %zu bytes needed\n", pszInFilename, nFileSize);
       return 100;
    }
 
@@ -648,7 +646,7 @@ static int do_compr_benchmark(const char *pszInFilename, const char *pszOutFilen
    pCompressedData = (unsigned char*)malloc(nMaxCompressedSize + 2048);
    if (!pCompressedData) {
       free(pFileData);
-      fprintf(stderr, "out of memory for compressing '%s', %zd bytes needed\n", pszInFilename, nMaxCompressedSize);
+      fprintf(stderr, "out of memory for compressing '%s', %zu bytes needed\n", pszInFilename, nMaxCompressedSize);
       return 100;
    }
 
@@ -719,7 +717,7 @@ static int do_compr_benchmark(const char *pszInFilename, const char *pszOutFilen
    free(pCompressedData);
    free(pFileData);
 
-   fprintf(stdout, "compressed size: %zd bytes\n", nActualCompressedSize);
+   fprintf(stdout, "compressed size: %zu bytes\n", nActualCompressedSize);
    fprintf(stdout, "compression time: %lld microseconds (%g Mb/s)\n", nBestCompTime, ((double)nActualCompressedSize / 1024.0) / ((double)nBestCompTime / 1000.0));
 
    return 0;
@@ -758,7 +756,7 @@ static int do_dec_benchmark(const char *pszInFilename, const char *pszOutFilenam
    pFileData = (unsigned char*)malloc(nFileSize);
    if (!pFileData) {
       fclose(f_in);
-      fprintf(stderr, "out of memory for reading '%s', %zd bytes needed\n", pszInFilename, nFileSize);
+      fprintf(stderr, "out of memory for reading '%s', %zu bytes needed\n", pszInFilename, nFileSize);
       return 100;
    }
 
@@ -786,7 +784,7 @@ static int do_dec_benchmark(const char *pszInFilename, const char *pszOutFilenam
    pDecompressedData = (unsigned char*)malloc(nMaxDecompressedSize);
    if (!pDecompressedData) {
       free(pFileData);
-      fprintf(stderr, "out of memory for decompressing '%s', %zd bytes needed\n", pszInFilename, nMaxDecompressedSize);
+      fprintf(stderr, "out of memory for decompressing '%s', %zu bytes needed\n", pszInFilename, nMaxDecompressedSize);
       return 100;
    }
 
@@ -826,7 +824,7 @@ static int do_dec_benchmark(const char *pszInFilename, const char *pszOutFilenam
    free(pDecompressedData);
    free(pFileData);
 
-   fprintf(stdout, "decompressed size: %zd bytes\n", nActualDecompressedSize);
+   fprintf(stdout, "decompressed size: %zu bytes\n", nActualDecompressedSize);
    fprintf(stdout, "decompression time: %lld microseconds (%g Mb/s)\n", nBestDecTime, ((double)nActualDecompressedSize / 1024.0) / ((double)nBestDecTime / 1000.0));
 
    return 0;
