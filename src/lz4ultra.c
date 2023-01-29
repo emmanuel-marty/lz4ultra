@@ -504,7 +504,7 @@ static int do_self_test(const unsigned int nOptions, int nBlockMaxCode) {
             /* Try to compress it, expected to succeed */
             size_t nActualCompressedSize = lz4ultra_compress_inmem(pGeneratedData, pCompressedData, nGeneratedDataSize, lz4ultra_get_max_compressed_size_inmem(nGeneratedDataSize, nFlags, nBlockMaxCode), 
                nFlags, nBlockMaxCode);
-            if (nActualCompressedSize == -1 || nActualCompressedSize < (LZ4ULTRA_HEADER_SIZE + LZ4ULTRA_FRAME_SIZE + LZ4ULTRA_FRAME_SIZE /* footer */)) {
+            if (nActualCompressedSize == (size_t)-1 || nActualCompressedSize < (LZ4ULTRA_HEADER_SIZE + LZ4ULTRA_FRAME_SIZE + LZ4ULTRA_FRAME_SIZE /* footer */)) {
                free(pTmpDecompressedData);
                pTmpDecompressedData = NULL;
                free(pTmpCompressedData);
@@ -521,7 +521,7 @@ static int do_self_test(const unsigned int nOptions, int nBlockMaxCode) {
             /* Try to decompress it, expected to succeed */
             size_t nActualDecompressedSize;
             nActualDecompressedSize = lz4ultra_decompress_inmem(pCompressedData, pTmpDecompressedData, nActualCompressedSize, nGeneratedDataSize, nFlags);
-            if (nActualDecompressedSize == -1) {
+            if (nActualDecompressedSize == (size_t)-1) {
                free(pTmpDecompressedData);
                pTmpDecompressedData = NULL;
                free(pTmpCompressedData);
@@ -668,7 +668,7 @@ static int do_compr_benchmark(const char *pszInFilename, const char *pszOutFilen
       long long t0 = do_get_time();
       nActualCompressedSize = lz4ultra_compress_inmem(pFileData, pCompressedData + 1024, nFileSize, nRightGuardPos, nFlags, nBlockMaxCode);
       long long t1 = do_get_time();
-      if (nActualCompressedSize == -1) {
+      if (nActualCompressedSize == (size_t)-1) {
          free(pCompressedData);
          free(pFileData);
          fprintf(stderr, "compression error\n");
@@ -676,7 +676,7 @@ static int do_compr_benchmark(const char *pszInFilename, const char *pszOutFilen
       }
 
       long long nCurDecTime = t1 - t0;
-      if (nBestCompTime == -1 || nBestCompTime > nCurDecTime)
+      if (nBestCompTime == (size_t)-1 || nBestCompTime > nCurDecTime)
          nBestCompTime = nCurDecTime;
 
       /* Check guard bytes before the output buffer */
@@ -775,7 +775,7 @@ static int do_dec_benchmark(const char *pszInFilename, const char *pszOutFilenam
       nMaxDecompressedSize = 0x400000;
    else
       nMaxDecompressedSize = lz4ultra_inmem_get_max_decompressed_size(pFileData, nFileSize);
-   if (nMaxDecompressedSize == -1) {
+   if (nMaxDecompressedSize == (size_t)-1) {
       free(pFileData);
       fprintf(stderr, "invalid compressed format for file '%s'\n", pszInFilename);
       return 100;
@@ -797,7 +797,7 @@ static int do_dec_benchmark(const char *pszInFilename, const char *pszOutFilenam
       long long t0 = do_get_time();
       nActualDecompressedSize = lz4ultra_decompress_inmem(pFileData, pDecompressedData, nFileSize, nMaxDecompressedSize, nFlags);
       long long t1 = do_get_time();
-      if (nActualDecompressedSize == -1) {
+      if (nActualDecompressedSize == (size_t)-1) {
          free(pDecompressedData);
          free(pFileData);
          fprintf(stderr, "decompression error\n");
@@ -805,7 +805,7 @@ static int do_dec_benchmark(const char *pszInFilename, const char *pszOutFilenam
       }
 
       long long nCurDecTime = t1 - t0;
-      if (nBestDecTime == -1 || nBestDecTime > nCurDecTime)
+      if (nBestDecTime == (size_t)-1 || nBestDecTime > nCurDecTime)
          nBestDecTime = nCurDecTime;
    }
 
@@ -1002,7 +1002,7 @@ int main(int argc, char **argv) {
    if (cCommand == 'z') {
       int nResult = do_compress(pszInFilename, pszOutFilename, pszDictionaryFilename, nOptions, nBlockMaxCode);
       if (nResult == 0 && bVerifyCompression) {
-         nResult = do_compare(pszOutFilename, pszInFilename, pszDictionaryFilename, nOptions);
+         return do_compare(pszOutFilename, pszInFilename, pszDictionaryFilename, nOptions);
       }
    }
    else if (cCommand == 'd') {
